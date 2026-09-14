@@ -136,6 +136,9 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 .r1{border-color:#5b7fb0}.r1 .rr{background:#37507a;color:#dbe8ff}
 .r2{border-color:#7d6bff}.r2 .rr{background:#4b3fbb;color:#e6e0ff}
 .r3{border-color:#ffb84d;box-shadow:0 0 22px #ffab2e44}.r3 .rr{background:#a86a10;color:#fff2d0}
+.attrrow{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
+.abadge{font-size:10px;font-weight:900;padding:1px 6px;border-radius:7px;background:#0d1424cc;border:1px solid #ffffff22;text-shadow:0 1px 2px #000}
+.skchip .abartag{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:9px 0 0 9px}
 .stack{position:absolute}
 .list{display:flex;flex-direction:column;gap:7px;width:100%;max-height:46vh;overflow-y:auto;padding-right:2px}
 .item{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:13px;background:#152036;border:1.5px solid #34486e}
@@ -175,6 +178,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
           <div class="bar-txt" id="hpTxt">100/100</div></div>
         <div class="bar xp"><div class="fill" id="xpFill" style="width:0%"></div></div>
         <div class="lvtag" id="lvTag">P1 · Lv.1</div>
+        <div class="attrrow" id="attrRow"></div>
       </div>
       <div class="hud-mid">
         <div class="stage" id="stageTxt">幽暗森林 1-1</div>
@@ -190,6 +194,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
         <div class="bar-txt" id="hpTxt2">100/100</div></div>
       <div class="bar xp p2"><div class="fill" id="xpFill2" style="width:0%"></div></div>
       <div class="lvtag p2" id="lvTag2">P2 · Lv.1</div>
+      <div class="attrrow" id="attrRow2"></div>
     </div>
     <div id="skillBar"></div>
     <div id="skillBar2" class="hidden"></div>
@@ -342,7 +347,8 @@ const el = {
   btnDash: $("btnDash"), btnPause: $("btnPause"),
   p2hud: $("p2hud"), hpFill2: $("hpFill2"), shFill2: $("shFill2"), hpTxt2: $("hpTxt2"),
   xpFill2: $("xpFill2"), lvTag2: $("lvTag2"), skillBar2: $("skillBar2"),
-  stick2: $("stick2"), stickKnob2: $("stickKnob2"), btnDash2: $("btnDash2")
+  stick2: $("stick2"), stickKnob2: $("stickKnob2"), btnDash2: $("btnDash2"),
+  attrRow: $("attrRow"), attrRow2: $("attrRow2")
 };
 function toast(msg, ms) {
   const d = document.createElement("div");
@@ -365,6 +371,28 @@ const G = {
 };
 let players = [], enemies = [], arrows = [], ebullets = [], pickups = [], parts = [], floats = [], effects = [];
 const MAX_ENEMIES = 30;
+/* ======================= 三系属性（《重生细胞》式） =======================
+   每个技能归属一色；升级点数有限，必须先选属性再选该系技能。
+   点数集中在某一系 → 该系技能强度成倍提升；撒胡椒面则四不像。 */
+const ATTRS = {
+  red: { id: "red", name: "狂怒", icon: "🔴", color: "#ff6b6b", dmgK: 0.10, utilK: 0.08, desc: "爆发与直接伤害：攻击、攻速、暴击、多重、穿透、爆裂、斩杀" },
+  purple: { id: "purple", name: "秘法", icon: "🟣", color: "#b48cff", dmgK: 0.10, utilK: 0.08, desc: "元素与弹道：烈焰、寒冰、雷霆、弹射、分裂、环绕、天雷" },
+  green: { id: "green", name: "生存", icon: "🟢", color: "#57e08a", dmgK: 0.09, utilK: 0.14, desc: "防御与续航：生命、护盾、荆棘、吸血、回复、闪避、幸运" }
+};
+const ATTR_ORDER = ["red", "purple", "green"];
+const ATTR_MAX = 12;   // 每系上限：点数是稀缺资源，不可能三系都满
+function attrLv(p, key) { return (p && p.attrs && p.attrs[key]) || 0; }
+function attrMaxed(p, key) { return attrLv(p, key) >= ATTR_MAX; }
+function anyAttrLeft(p) { return ATTR_ORDER.some((k) => !attrMaxed(p, k)); }
+function attrMax(p) { return Math.max(attrLv(p, "red"), attrLv(p, "purple"), attrLv(p, "green")); }
+/* 该系技能的强度倍率（1 = 未投资） */
+function attrDmgMul(p, key) { return 1 + ATTRS[key].dmgK * attrLv(p, key); }
+function attrUtilMul(p, key) { return 1 + ATTRS[key].utilK * attrLv(p, key); }
+/* 本体箭矢视为「无色武器」，按最高属性成长（保证任何流派都能打） */
+function colorlessMul(p) { return 1 + 0.05 * attrMax(p); }
+function attrSummary(p) {
+  return ATTR_ORDER.map((k) => ATTRS[k].icon + attrLv(p, k)).join(" ");
+}
 function P1() { return players[0]; }
 function alivePlayers() { return players.filter((p) => p.alive || p.down); }
 function activePlayers() { return players.filter((p) => p.alive && !p.down); }
@@ -515,41 +543,41 @@ const PERMS = [
 /* 规则：技能只增不减、不会被替换；重复获得同一技能即叠加层数（层数上限见 max）。
    apply(st, n) 中 n 为当前总层数；descOf(n) 用于展示叠加后的实际效果。 */
 const SKILLS = [
-  { id: "atk", name: "力量强化", icon: "🗡️", r: 1, max: 99, desc: "每层攻击力 +12%", descOf: (n) => "攻击力 +" + ((Math.pow(1.12, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.atkMul *= Math.pow(1.12, n); } },
-  { id: "aspd", name: "疾风之手", icon: "⚡", r: 1, max: 99, desc: "每层攻击速度 +12%", descOf: (n) => "攻速 +" + ((Math.pow(1.12, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.aspdMul *= Math.pow(1.12, n); } },
-  { id: "speed", name: "轻盈之靴", icon: "👟", r: 1, max: 12, desc: "每层移动速度 +8%", descOf: (n) => "移速 +" + ((Math.pow(1.08, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.speedMul *= Math.pow(1.08, n); } },
-  { id: "hp", name: "生命之心", icon: "❤️", r: 1, max: 99, desc: "每层最大生命 +18，并立即回复 18", descOf: (n) => "最大生命 +" + 18 * n, apply: (s, n) => { s.hpAdd += 18 * n; } },
-  { id: "crit", name: "猎人直觉", icon: "🎯", r: 1, max: 15, desc: "每层暴击率 +6%", descOf: (n) => "暴击率 +" + (6 * n) + "%", apply: (s, n) => { s.crit += 0.06 * n; } },
-  { id: "critdmg", name: "致命打击", icon: "💥", r: 2, max: 8, req: (s) => s.crit >= 0.12, desc: "每层暴击伤害 +35%", descOf: (n) => "暴击伤害 +" + (35 * n) + "%", apply: (s, n) => { s.critMul += 0.35 * n; } },
-  { id: "multi", name: "多重射击", icon: "🏹", r: 2, max: 8, desc: "每层额外射出 1 支箭", descOf: (n) => "每次射出 " + (1 + n) + " 支箭", apply: (s, n) => { s.arrows += n; } },
-  { id: "pierce", name: "穿透之箭", icon: "➡️", r: 1, max: 8, desc: "每层额外穿透 1 个敌人", descOf: (n) => "可穿透 " + n + " 个敌人", apply: (s, n) => { s.pierce += n; } },
-  { id: "bounce", name: "弹射之箭", icon: "🔄", r: 2, max: 5, desc: "每层命中后弹射 +1 次", descOf: (n) => "可弹射 " + n + " 次", apply: (s, n) => { s.bounce += n; } },
-  { id: "homing", name: "追踪之箭", icon: "🧭", r: 2, max: 4, desc: "箭矢自动追踪（每层转向更灵敏）", descOf: (n) => "追踪等级 " + n, apply: (s, n) => { s.homing += n; } },
-  { id: "fire", name: "烈焰之箭", icon: "🔥", r: 1, max: 8, desc: "每层提高点燃灼烧伤害", descOf: (n) => "灼烧 " + (4 + n * 3.2).toFixed(1) + " 伤害/0.5秒", apply: (s, n) => { s.fire += n; } },
-  { id: "ice", name: "寒冰之箭", icon: "❄️", r: 1, max: 5, desc: "每层加强命中减速", descOf: (n) => "减速层数 " + n, apply: (s, n) => { s.ice += n; } },
-  { id: "bolt", name: "雷霆之链", icon: "🌩️", r: 2, max: 5, desc: "每层闪电链多跳 1 次", descOf: (n) => "连锁 " + n + " 次", apply: (s, n) => { s.bolt += n; } },
-  { id: "split", name: "分裂之箭", icon: "✳️", r: 2, max: 3, desc: "每层命中后额外分裂一击", descOf: (n) => "分裂 " + (n * 2) + " 支小箭", apply: (s, n) => { s.split += n; } },
-  { id: "boom", name: "爆裂之箭", icon: "💣", r: 2, max: 5, desc: "每层提高爆炸伤害与范围", descOf: (n) => "爆炸范围 " + (30 + n * 12) + "，伤害 " + (45 + n * 15) + "%", apply: (s, n) => { s.boom += n; } },
-  { id: "giant", name: "巨箭", icon: "🔷", r: 2, max: 3, desc: "每层箭矢 +45% 体积、+25% 伤害", descOf: (n) => "箭矢体积 +" + ((Math.pow(1.45, n) - 1) * 100).toFixed(0) + "%，伤害 +" + ((Math.pow(1.25, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.big *= Math.pow(1.45, n); s.atkMul *= Math.pow(1.25, n); } },
-  { id: "side", name: "侧翼射击", icon: "↔️", r: 2, max: 4, desc: "每层左右各追加 1 支箭", descOf: (n) => "左右各 +" + n + " 支箭", apply: (s, n) => { s.side += n; } },
-  { id: "rear", name: "背后射击", icon: "🔙", r: 2, max: 4, desc: "每层向身后追加 1 支箭", descOf: (n) => "背后 +" + n + " 支箭", apply: (s, n) => { s.rear += n; } },
-  { id: "orbit", name: "守护精灵", icon: "🛡️", r: 2, max: 5, desc: "每层多一颗环绕光球", descOf: (n) => n + " 颗光球", apply: (s, n) => { s.orbit += n; } },
-  { id: "shield", name: "能量护盾", icon: "🔵", r: 1, max: 8, desc: "每层进房获得 12 点护盾", descOf: (n) => "护盾 " + (12 * n) + " 点", apply: (s, n) => { s.shieldMax += 12 * n; } },
-  { id: "thorns", name: "荆棘之甲", icon: "🌵", r: 1, max: 5, desc: "每层反弹 150% 近战伤害", descOf: (n) => "反弹 " + (150 * n) + "%", apply: (s, n) => { s.thorns += 1.5 * n; } },
-  { id: "lifesteal", name: "吸血獠牙", icon: "🩸", r: 1, max: 8, desc: "每层击杀回复 2 点生命", descOf: (n) => "击杀回复 " + (2 * n) + " 点", apply: (s, n) => { s.lifesteal += 2 * n; } },
-  { id: "vamp", name: "嗜血", icon: "🧛", r: 2, max: 5, desc: "每层提高攻击回血几率", descOf: (n) => (15 * n) + "% 几率回血", apply: (s, n) => { s.vamp += n; } },
-  { id: "dash", name: "疾影冲刺", icon: "💨", r: 2, max: 3, desc: "解锁冲刺；每层减少冷却 0.3 秒", descOf: (n) => "冲刺冷却 " + Math.max(0.75, 1.5 - 0.3 * (n - 1)).toFixed(2) + " 秒", apply: (s, n) => { s.dash += n; } },
-  { id: "magnet", name: "磁力手套", icon: "🧲", r: 1, max: 5, desc: "每层拾取范围 +85%", descOf: (n) => "拾取范围 +" + (85 * n) + "%", apply: (s, n) => { s.magnet += n; } },
-  { id: "slowmo", name: "时间领域", icon: "⏳", r: 2, max: 3, desc: "每层让附近敌人更慢", descOf: (n) => "近身敌人 -" + Math.min(70, 28 * n) + "% 速度", apply: (s, n) => { s.slowmo += n; } },
-  { id: "thunder", name: "天罚天雷", icon: "☄️", r: 3, max: 5, desc: "每层每次多劈 1 道雷", descOf: (n) => "每 3 秒劈 " + n + " 道雷", apply: (s, n) => { s.thunder += n; } },
-  { id: "revive", name: "凤凰之心", icon: "🕊️", r: 3, max: 2, desc: "每层获得 1 次复活机会", descOf: (n) => "可复活 " + n + " 次（55% 生命）", apply: (s, n) => { s.revive += n; } },
-  { id: "luck", name: "幸运金币", icon: "🍀", r: 1, max: 5, desc: "每层金币 +20%", descOf: (n) => "金币 +" + (20 * n) + "%", apply: (s, n) => { s.luck += 0.2 * n; } },
-  { id: "dodge", name: "幻影身法", icon: "🌀", r: 1, max: 6, desc: "每层闪避率 +8%", descOf: (n) => "闪避 " + (8 * n) + "%", apply: (s, n) => { s.dodge += 0.08 * n; } },
-  { id: "guard", name: "坚壁", icon: "🧱", r: 2, max: 5, desc: "每层受到伤害 -12%", descOf: (n) => "受伤 -" + Math.round(Math.min(0.6, 0.12 * n) * 100) + "%", apply: (s, n) => { s.guard += 0.12 * n; } },
-  { id: "regen", name: "生命回复", icon: "🌿", r: 2, max: 5, desc: "每层每秒回复 0.6 生命", descOf: (n) => "每秒回复 " + (0.6 * n).toFixed(1), apply: (s, n) => { s.regen += 0.6 * n; } },
-  { id: "rage", name: "狂战之怒", icon: "🔺", r: 3, max: 3, desc: "生命越低攻击越高", descOf: (n) => "残血最多 +" + (55 * n) + "% 攻击", apply: (s, n) => { s.rage += 0.55 * n; } },
-  { id: "spiral", name: "环绕箭雨", icon: "🌀", r: 3, max: 4, desc: "每层箭雨多出箭矢", descOf: (n) => "每 4.5 秒射出 " + (8 + n * 2) + " 支箭", apply: (s, n) => { s.spiral += n; } },
-  { id: "execute", name: "斩杀", icon: "☠️", r: 3, max: 3, desc: "对残血敌人伤害翻倍", descOf: (n) => "残血伤害 ×" + (1 + n), apply: (s, n) => { s.execute += n; } }
+  { id: "atk", attr: "red", name: "力量强化", icon: "🗡️", r: 1, max: 12, desc: "每层攻击力 +12%", descOf: (n) => "攻击力 +" + ((Math.pow(1.12, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.atkMul *= Math.pow(1.12, n); } },
+  { id: "aspd", attr: "red", name: "疾风之手", icon: "⚡", r: 1, max: 12, desc: "每层攻击速度 +12%", descOf: (n) => "攻速 +" + ((Math.pow(1.12, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.aspdMul *= Math.pow(1.12, n); } },
+  { id: "speed", attr: "green", name: "轻盈之靴", icon: "👟", r: 1, max: 12, desc: "每层移动速度 +8%", descOf: (n) => "移速 +" + ((Math.pow(1.08, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.speedMul *= Math.pow(1.08, n); } },
+  { id: "hp", attr: "green", name: "生命之心", icon: "❤️", r: 1, max: 12, desc: "每层最大生命 +18，并立即回复 18", descOf: (n) => "最大生命 +" + 18 * n, apply: (s, n) => { s.hpAdd += 18 * n; } },
+  { id: "crit", attr: "red", name: "猎人直觉", icon: "🎯", r: 1, max: 15, desc: "每层暴击率 +6%", descOf: (n) => "暴击率 +" + (6 * n) + "%", apply: (s, n) => { s.crit += 0.06 * n; } },
+  { id: "critdmg", attr: "red", name: "致命打击", icon: "💥", r: 2, max: 8, req: (s) => s.crit >= 0.12, desc: "每层暴击伤害 +35%", descOf: (n) => "暴击伤害 +" + (35 * n) + "%", apply: (s, n) => { s.critMul += 0.35 * n; } },
+  { id: "multi", attr: "red", name: "多重射击", icon: "🏹", r: 2, max: 8, desc: "每层额外射出 1 支箭", descOf: (n) => "每次射出 " + (1 + n) + " 支箭", apply: (s, n) => { s.arrows += n; } },
+  { id: "pierce", attr: "red", name: "穿透之箭", icon: "➡️", r: 1, max: 8, desc: "每层额外穿透 1 个敌人", descOf: (n) => "可穿透 " + n + " 个敌人", apply: (s, n) => { s.pierce += n; } },
+  { id: "bounce", attr: "purple", name: "弹射之箭", icon: "🔄", r: 2, max: 5, desc: "每层命中后弹射 +1 次", descOf: (n) => "可弹射 " + n + " 次", apply: (s, n) => { s.bounce += n; } },
+  { id: "homing", attr: "purple", name: "追踪之箭", icon: "🧭", r: 2, max: 4, desc: "箭矢自动追踪（每层转向更灵敏）", descOf: (n) => "追踪等级 " + n, apply: (s, n) => { s.homing += n; } },
+  { id: "fire", attr: "purple", name: "烈焰之箭", icon: "🔥", r: 1, max: 8, desc: "每层提高点燃灼烧伤害", descOf: (n) => "灼烧 " + (4 + n * 3.2).toFixed(1) + " 伤害/0.5秒", apply: (s, n) => { s.fire += n; } },
+  { id: "ice", attr: "purple", name: "寒冰之箭", icon: "❄️", r: 1, max: 5, desc: "每层加强命中减速", descOf: (n) => "减速层数 " + n, apply: (s, n) => { s.ice += n; } },
+  { id: "bolt", attr: "purple", name: "雷霆之链", icon: "🌩️", r: 2, max: 5, desc: "每层闪电链多跳 1 次", descOf: (n) => "连锁 " + n + " 次", apply: (s, n) => { s.bolt += n; } },
+  { id: "split", attr: "purple", name: "分裂之箭", icon: "✳️", r: 2, max: 3, desc: "每层命中后额外分裂一击", descOf: (n) => "分裂 " + (n * 2) + " 支小箭", apply: (s, n) => { s.split += n; } },
+  { id: "boom", attr: "red", name: "爆裂之箭", icon: "💣", r: 2, max: 5, desc: "每层提高爆炸伤害与范围", descOf: (n) => "爆炸范围 " + (30 + n * 12) + "，伤害 " + (45 + n * 15) + "%", apply: (s, n) => { s.boom += n; } },
+  { id: "giant", attr: "red", name: "巨箭", icon: "🔷", r: 2, max: 3, desc: "每层箭矢 +45% 体积、+25% 伤害", descOf: (n) => "箭矢体积 +" + ((Math.pow(1.45, n) - 1) * 100).toFixed(0) + "%，伤害 +" + ((Math.pow(1.25, n) - 1) * 100).toFixed(0) + "%", apply: (s, n) => { s.big *= Math.pow(1.45, n); s.atkMul *= Math.pow(1.25, n); } },
+  { id: "side", attr: "red", name: "侧翼射击", icon: "↔️", r: 2, max: 4, desc: "每层左右各追加 1 支箭", descOf: (n) => "左右各 +" + n + " 支箭", apply: (s, n) => { s.side += n; } },
+  { id: "rear", attr: "red", name: "背后射击", icon: "🔙", r: 2, max: 4, desc: "每层向身后追加 1 支箭", descOf: (n) => "背后 +" + n + " 支箭", apply: (s, n) => { s.rear += n; } },
+  { id: "orbit", attr: "purple", name: "守护精灵", icon: "🛡️", r: 2, max: 5, desc: "每层多一颗环绕光球", descOf: (n) => n + " 颗光球", apply: (s, n) => { s.orbit += n; } },
+  { id: "shield", attr: "green", name: "能量护盾", icon: "🔵", r: 1, max: 8, desc: "每层进房获得 12 点护盾", descOf: (n) => "护盾 " + (12 * n) + " 点", apply: (s, n) => { s.shieldMax += 12 * n; } },
+  { id: "thorns", attr: "green", name: "荆棘之甲", icon: "🌵", r: 1, max: 5, desc: "每层反弹 150% 近战伤害", descOf: (n) => "反弹 " + (150 * n) + "%", apply: (s, n) => { s.thorns += 1.5 * n; } },
+  { id: "lifesteal", attr: "green", name: "吸血獠牙", icon: "🩸", r: 1, max: 8, desc: "每层击杀回复 2 点生命", descOf: (n) => "击杀回复 " + (2 * n) + " 点", apply: (s, n) => { s.lifesteal += 2 * n; } },
+  { id: "vamp", attr: "red", name: "嗜血", icon: "🧛", r: 2, max: 5, desc: "每层提高攻击回血几率", descOf: (n) => (15 * n) + "% 几率回血", apply: (s, n) => { s.vamp += n; } },
+  { id: "dash", attr: "red", name: "疾影冲刺", icon: "💨", r: 2, max: 3, desc: "解锁冲刺；每层减少冷却 0.3 秒", descOf: (n) => "冲刺冷却 " + Math.max(0.75, 1.5 - 0.3 * (n - 1)).toFixed(2) + " 秒", apply: (s, n) => { s.dash += n; } },
+  { id: "magnet", attr: "green", name: "磁力手套", icon: "🧲", r: 1, max: 5, desc: "每层拾取范围 +85%", descOf: (n) => "拾取范围 +" + (85 * n) + "%", apply: (s, n) => { s.magnet += n; } },
+  { id: "slowmo", attr: "purple", name: "时间领域", icon: "⏳", r: 2, max: 3, desc: "每层让附近敌人更慢", descOf: (n) => "近身敌人 -" + Math.min(70, 28 * n) + "% 速度", apply: (s, n) => { s.slowmo += n; } },
+  { id: "thunder", attr: "purple", name: "天罚天雷", icon: "☄️", r: 3, max: 5, desc: "每层每次多劈 1 道雷", descOf: (n) => "每 3 秒劈 " + n + " 道雷", apply: (s, n) => { s.thunder += n; } },
+  { id: "revive", attr: "green", name: "凤凰之心", icon: "🕊️", r: 3, max: 2, desc: "每层获得 1 次复活机会", descOf: (n) => "可复活 " + n + " 次（55% 生命）", apply: (s, n) => { s.revive += n; } },
+  { id: "luck", attr: "green", name: "幸运金币", icon: "🍀", r: 1, max: 5, desc: "每层金币 +20%", descOf: (n) => "金币 +" + (20 * n) + "%", apply: (s, n) => { s.luck += 0.2 * n; } },
+  { id: "dodge", attr: "green", name: "幻影身法", icon: "🌀", r: 1, max: 6, desc: "每层闪避率 +8%", descOf: (n) => "闪避 " + (8 * n) + "%", apply: (s, n) => { s.dodge += 0.08 * n; } },
+  { id: "guard", attr: "green", name: "坚壁", icon: "🧱", r: 2, max: 5, desc: "每层受到伤害 -12%", descOf: (n) => "受伤 -" + Math.round(Math.min(0.6, 0.12 * n) * 100) + "%", apply: (s, n) => { s.guard += 0.12 * n; } },
+  { id: "regen", attr: "green", name: "生命回复", icon: "🌿", r: 2, max: 5, desc: "每层每秒回复 0.6 生命", descOf: (n) => "每秒回复 " + (0.6 * n).toFixed(1), apply: (s, n) => { s.regen += 0.6 * n; } },
+  { id: "rage", attr: "red", name: "狂战之怒", icon: "🔺", r: 3, max: 3, desc: "生命越低攻击越高", descOf: (n) => "残血最多 +" + (55 * n) + "% 攻击", apply: (s, n) => { s.rage += 0.55 * n; } },
+  { id: "spiral", attr: "purple", name: "环绕箭雨", icon: "🌀", r: 3, max: 4, desc: "每层箭雨多出箭矢", descOf: (n) => "每 4.5 秒射出 " + (8 + n * 2) + " 支箭", apply: (s, n) => { s.spiral += n; } },
+  { id: "execute", attr: "red", name: "斩杀", icon: "☠️", r: 3, max: 3, desc: "对残血敌人伤害翻倍", descOf: (n) => "残血伤害 ×" + (1 + n), apply: (s, n) => { s.execute += n; } }
 ];
 const SKILL_MAP = {}; SKILLS.forEach((s) => (SKILL_MAP[s.id] = s));
 const HEAL_CARD = { id: "heal", name: "生命恢复", icon: "🍖", r: 1, desc: "立即回复 35% 最大生命", heal: 0.35 };
@@ -584,8 +612,8 @@ const BOSS_LEVELS = [5, 10];
 /* ======================= 关卡 / 房间生成 ======================= */
 function tierOf(ch, lv, ew) { return (ch - 1) * 10 + lv + (ew || 0); }
 /* 敌人成长：技能每局重置，因此血量成长必须平缓，主要靠永久强化与装备拉开差距 */
-function hpScale(tier) { return Math.pow(1.05, Math.max(0, tier - 1)); }
-function dmgScale(tier) { return Math.pow(1.028, Math.max(0, tier - 1)); }
+function hpScale(tier) { return Math.pow(1.065, Math.max(0, tier - 1)); }
+function dmgScale(tier) { return Math.pow(1.031, Math.max(0, tier - 1)); }
 
 function buildLevel(ch, lv) {
   const tier = tierOf(ch, lv, 0);
@@ -653,6 +681,28 @@ function computeStats(p) {
   s.crit += save.perm.crit * 0.02;
   s.luck += save.perm.luck * 0.08;
   s.hpAdd += save.perm.hp * 14;
+  /* ---- 三系属性加成：只在对应系列上生效，逼玩家做取舍 ---- */
+  const fr = attrDmgMul(p, "red"), fp = attrDmgMul(p, "purple"), fg = attrUtilMul(p, "green");
+  s.atkMul *= fr;                                  // 🔴 狂怒：直接伤害
+  s.aspdMul *= 1 + (fr - 1) * 0.5;                 //   攻速按一半幅度受益
+  s.critMul += (fr - 1) * 0.5;
+  s.execute *= fr;
+  s.rage *= fr;
+  s.vamp *= 1 + (fr - 1) * 0.5;
+  s.fire *= fp;                                    // 🟣 秘法：元素强度
+  s.ice *= 1 + (fp - 1) * 0.5;
+  s.hpAdd *= fg;                                   // 🟢 生存：防御与续航
+  s.shieldMax *= fg;
+  s.thorns *= fg;
+  s.lifesteal *= fg;
+  s.regen *= fg;
+  s.speedMul *= 1 + (fg - 1) * 0.4;
+  s.dodge *= 1 + (fg - 1) * 0.5;
+  s.guard *= 1 + (fg - 1) * 0.5;
+  s.luck *= 1 + (fg - 1) * 0.5;
+  s.fRed = fr; s.fPur = fp; s.fGrn = fg;
+  s.fMax = colorlessMul(p);
+  s.attrs = p && p.attrs ? p.attrs : { red: 0, purple: 0, green: 0 };
   s.baseDmg = w.dmg;
   s.baseAspd = w.aspd;
   s.baseSpeed = w.speed;
@@ -672,7 +722,7 @@ function refreshStats(p, healGain) {
 function refreshAllStats(healGain) { for (const p of players) refreshStats(p, healGain); }
 function atkOf(p) {
   const st = p.st;
-  let a = st.baseDmg * st.atkMul;
+  let a = st.baseDmg * st.atkMul * (st.fMax || 1);   // 本体箭矢：无色武器，按最高属性成长
   a *= 1 + Math.max(0, (p.level || 1) - 1) * 0.025;   // 本局等级越高攻击越强，平滑对抗关卡成长
   if (st.rage > 0) { const miss = 1 - p.hp / p.maxHp; a *= 1 + st.rage * miss; }
   return a;
@@ -697,7 +747,7 @@ function createPlayer(idx) {
   const c = PLAYER_COLORS[idx] || PLAYER_COLORS[0];
   const b = BOUND();
   const p = {
-    idx: idx, color: c, name: "",
+    idx: idx, color: c, name: "", attrs: { red: 0, purple: 0, green: 0 }, lastAttr: null, pendingAttr: true,
     x: idx === 0 ? V.w * 0.38 : V.w * 0.62, y: V.h * 0.55,
     r: 15 * V.scale, hp: 100, maxHp: 100, shield: 0, st: computeStats(null), skills: {},
     level: 1, exp: 0, pendingLv: 0,
@@ -752,7 +802,7 @@ function spawnEnemy(typeKey, opts) {
 }
 function spawnBoss(bossId, tier) {
   const base = BOSSES.find((b) => b.id === bossId) || BOSSES[0];
-  const mHp = Math.pow(hpScale(tier), 0.85) * (G.twoP ? 1.8 : 1);
+  const mHp = Math.pow(hpScale(tier), 0.8) * 1.35 * (G.twoP ? 1.8 : 1);
   const b = BOUND();
   const e = {
     type: "boss", bossId: base.id, name: base.name, x: V.w / 2, y: b.t + 90, r: base.r * clamp(V.scale, 0.8, 1.3),
@@ -809,7 +859,7 @@ function hurtEnemy(e, dmg, opts) {
   addFloat(e.x + rand(-6, 6), e.y - e.r - 4, Math.round(d).toString(), crit ? "#ffd479" : (p.idx === 1 ? "#cfe9ff" : "#ffffff"), crit ? 19 : 14, crit);
   spawnParticles(e.x, e.y, crit ? "#ffd479" : "#ffffff", crit ? 7 : 3, 130, 0.3, 3);
   if (crit) Sfx.crit(); else Sfx.hit();
-  if (opts.fire || st.fire > 0) { e.burn = Math.max(e.burn, 2.2); e.burnSrc = 4 + st.fire * 3.2; }
+  if (opts.fire || st.fire > 0) { e.burn = Math.max(e.burn, 2.2); e.burnSrc = (4 + st.fire * 3.2) * (1 + ((st.fPur || 1) - 1) * 0.6); }
   if (opts.ice || st.ice > 0) { e.slow = Math.max(e.slow, 0.9); e.iceStacks = Math.min(3, st.ice); }
   if (st.vamp > 0 && Math.random() < 0.15 * st.vamp * (opts.hits || 1)) healPlayer(p, 1, false);
   if (e.hp <= 0) killEnemy(e, opts);
@@ -997,7 +1047,7 @@ function updatePlayer(p, dt) {
           const last = p.orbitHit[key] || 0;
           if (G.time - last > 0.35) {
             p.orbitHit[key] = G.time;
-            hurtEnemy(e, atkOf(p) * 0.55, { owner: p });
+            hurtEnemy(e, atkOf(p) * 0.55 * (st.fPur || 1), { owner: p });
           }
         }
       }
@@ -1009,7 +1059,7 @@ function updatePlayer(p, dt) {
     if (p.spiralT <= 0) {
       p.spiralT = 4.5;
       const n = Math.min(8 + st.spiral * 2, 18);
-      for (let i = 0; i < n; i++) spawnArrow(p, (i / n) * TAU, { dmgMul: 0.6, speed: 520 });
+      for (let i = 0; i < n; i++) spawnArrow(p, (i / n) * TAU, { dmgMul: 0.6 * (st.fPur || 1), speed: 520 });
       ring(p.x, p.y, 46 * V.scale, "#c9a2ff", 0.3);
     }
   }
@@ -1025,7 +1075,7 @@ function updatePlayer(p, dt) {
         t.__struck = true;
         lightningBolt(t.x, BOUND().t - 10, t.x, t.y, "#bfe8ff");
         ring(t.x, t.y, 44 * V.scale, "#bfe8ff", 0.3);
-        hurtEnemy(t, atkOf(p) * 1.1, { owner: p });
+        hurtEnemy(t, atkOf(p) * 1.1 * (st.fPur || 1), { owner: p });
         spawnParticles(t.x, t.y, "#dff2ff", 8, 200, 0.4, 4, true);
       }
       enemies.forEach((en) => (en.__struck = false));
@@ -1096,7 +1146,7 @@ function updateArrows(dt) {
       if (dist(a, e) < e.r + a.r + 2) {
         a.hit.push(e);
         hurtEnemy(e, a.dmg, { owner: a.owner });
-        if (st.boom > 0) explodeAt(a.x, a.y, 30 * V.scale + st.boom * 12 * V.scale, a.dmg * (0.45 + 0.15 * st.boom), a.owner);
+        if (st.boom > 0) explodeAt(a.x, a.y, 30 * V.scale + st.boom * 12 * V.scale, a.dmg * (0.45 + 0.15 * st.boom) * (st.fRed || 1), a.owner);
         if (st.bolt > 0) {
           let src = e, jumped = 0, used = [e];
           while (jumped < st.bolt) {
@@ -1104,7 +1154,7 @@ function updateArrows(dt) {
             for (const o of enemies) { if (o.dead || used.indexOf(o) >= 0) continue; const dd = dist(src, o); if (dd < nd) { nd = dd; nx = o; } }
             if (!nx) break;
             lightningBolt(src.x, src.y, nx.x, nx.y, "#9fdcff");
-            hurtEnemy(nx, a.dmg * 0.6, { noCrit: true, owner: a.owner });
+            hurtEnemy(nx, a.dmg * 0.6 * (st.fPur || 1), { noCrit: true, owner: a.owner });
             used.push(nx); src = nx; jumped++;
           }
         }
@@ -1113,7 +1163,7 @@ function updateArrows(dt) {
             const na = a.ang + ((k % 2 === 0) ? 0.7 : -0.7) * (1 + Math.floor(k / 2) * 0.35);
             arrows.push({
               owner: a.owner,
-              x: a.x, y: a.y, vx: Math.cos(na) * 460, vy: Math.sin(na) * 460, ang: na, dmg: a.dmg * 0.45,
+              x: a.x, y: a.y, vx: Math.cos(na) * 460, vy: Math.sin(na) * 460, ang: na, dmg: a.dmg * 0.45 * (st.fPur || 1),
               r: a.r * 0.7, len: a.len * 0.7, life: 0.5, pierce: 0, bounce: 0, homing: 0, hit: [], mini: true, color: "#ffe08a"
             });
           }
@@ -1472,13 +1522,14 @@ function startRun(chapter, level, endless, opts) {
     const c = carryFrom ? carryFrom[i] : null;
     if (c) {
       p.skills = Object.assign({}, c.skills || {});
+      p.attrs = Object.assign({ red: 0, purple: 0, green: 0 }, c.attrs || {});
       p.level = c.level || 1;
       p.exp = c.exp || 0;
       carried = Math.max(carried, Object.keys(p.skills).length);
     }
     refreshStats(p, false);
     p.hp = c ? clamp(Math.round(p.maxHp * (c.hpRatio === undefined ? 1 : c.hpRatio)), Math.round(p.maxHp * 0.35), p.maxHp) : p.maxHp;
-    p.pendingLv = 0; p.down = false; p.alive = true;
+    p.pendingLv = 0; p.pendingAttr = true; p.down = false; p.alive = true;
     players.push(p);
   }
   arrows = []; ebullets = []; enemies = []; pickups = []; parts = []; floats = []; effects = [];
@@ -1505,6 +1556,7 @@ function chapterName(ch) { const c = CHAPTERS[(ch - 1) % CHAPTERS.length]; retur
 /* 整局继承快照：技能 / 等级 / 经验 / 生命比例 */
 function snapshotCarry() {
   G.carry = players.map((p) => ({
+    attrs: Object.assign({ red: 0, purple: 0, green: 0 }, p.attrs || {}),
     skills: Object.assign({}, p.skills),
     level: p.level,
     exp: p.exp || 0,
@@ -1521,7 +1573,7 @@ function roomTier() {
 function loadRoom() {
   enemies.length = 0; ebullets.length = 0; arrows.length = 0; pickups.length = 0;
   G.waveIdx = 0; G.waveDelay = 0; G.roomClear = false; G.roomClearTimer = 0;
-  G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0;
+  G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0; G.attritionT = 0; G.attritionWarned = false;
   const r = G.rooms[G.room];
   const b = BOUND();
   players.forEach((p, i) => {
@@ -1566,6 +1618,21 @@ function checkRoomFlow(dt) {
   if (!G.roomClear && enemies.length > 0) {
     G.roomTimer = (G.roomTimer || 0) + dt;
     G.noKillT = (G.noKillT || 0) + dt;
+    // 保险丝：拖过 60 秒后敌人开始被环境侵蚀，防止任何原因的长时间僵持
+    if (G.roomTimer > 45) {
+      const ramp = Math.min(8, 1 + (G.roomTimer - 45) / 12);           // 每秒伤害倍率逐渐上升
+      const tick = 2.5;
+      G.attritionT = (G.attritionT || 0) + dt;
+      if (G.attritionT >= tick) {
+        G.attritionT = 0;
+        for (const e of enemies) {
+          if (e.dead) continue;
+          hurtEnemySilent(e, e.maxHp * 0.03 * ramp);
+          addFloat(e.x, e.y - e.r - 8, "侵蚀", "#ff9db5", 12);
+        }
+        if (!G.attritionWarned) { G.attritionWarned = true; toast("⏳ 僵持太久，敌人开始被侵蚀！", 1600); }
+      }
+    }
     const want = Math.min(1, Math.floor(G.noKillT / 12));   // 每 12 秒一档，最多 4 档
     if (want > (G.rageLv || 0)) {
       G.rageLv = want;
@@ -1573,7 +1640,7 @@ function checkRoomFlow(dt) {
       if (want === 1) { toast("⚠️ 敌人开始狂暴！", 1400); Sfx.boss(); }
     }
   } else {
-    G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0;
+    G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0; G.attritionT = 0; G.attritionWarned = false;
   }
   if (G.roomClear) {
     G.roomClearTimer -= dt;
@@ -1664,7 +1731,10 @@ function skillBarHtml(p) {
   let html = "";
   for (const id of ids) {
     const sk = SKILL_MAP[id]; if (!sk) continue;
-    html += '<div class="skchip' + (p.idx === 1 ? " p2" : "") + '">' + sk.icon + (p.skills[id] > 1 ? "<b>" + p.skills[id] + "</b>" : "") + "</div>";
+    const a = ATTRS[sk.attr];
+    html += '<div class="skchip' + (p.idx === 1 ? " p2" : "") + '">' +
+      (a ? '<div class="abartag" style="background:' + a.color + '"></div>' : "") +
+      sk.icon + (p.skills[id] > 1 ? "<b>" + p.skills[id] + "</b>" : "") + "</div>";
   }
   if (p.down) html = '<div class="skchip">💀</div>' + html;
   return html;
@@ -1699,6 +1769,8 @@ function updateHud() {
     paintBar(el.hpFill2, el.shFill2, el.hpTxt2, el.lvTag2, players[1], playerTag(players[1]));
     el.xpFill2.style.width = ((players[1].exp || 0) / expNeed(players[1].level) * 100).toFixed(1) + "%";
   }
+  el.attrRow.innerHTML = attrBadges(players[0]);
+  if (G.twoP && players[1]) el.attrRow2.innerHTML = attrBadges(players[1]);
   el.coinTxt.textContent = "🪙 " + fmt(save.coins);
   el.btnDash.classList.toggle("cd", players[0].dashCd > 0);
   if (G.twoP && players[1]) el.btnDash2.classList.toggle("cd", players[1].dashCd > 0);
@@ -2193,9 +2265,15 @@ function showHelp() {
     "· 电脑：P1 用 <span class='kbd'>WASD</span>+<span class='kbd'>空格</span>，P2 用 <span class='kbd'>方向键</span>+<span class='kbd'>Shift</span><br>" +
     "· 两人各自升级、各自选技能、各自有血条；一人倒下后，<b>清空当前房间即可复活</b><br>" +
     "· 双人时敌人血量 ×1.75，配合才能走远<br><br>" +
+    "<b style='color:#ffd479'>三系属性（核心成长）</b><br>" +
+    "· 🔴<b style='color:#ff6b6b'>狂怒</b>：攻击、攻速、暴击、多重、穿透、爆裂、斩杀<br>" +
+    "· 🟣<b style='color:#b48cff'>秘法</b>：烈焰、寒冰、雷霆、弹射、分裂、环绕、天雷<br>" +
+    "· 🟢<b style='color:#57e08a'>生存</b>：生命、护盾、荆棘、吸血、回复、闪避、幸运<br>" +
+    "· 升级分两步：<b>先选属性，再从该系抽 3 张技能卡选 1 张</b>；技能重复选会叠加层数<br>" +
+    "· 属性点<b>有限（每系上限 12 点）</b>，<b>集中投资才有强度</b>——平均分配会四不像<br>" +
+    "· 每系等级只放大<b>该系</b>技能；本体箭矢按<b>最高属性</b>成长（所以任何流派都能打）<br><br>" +
     "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
-    "<b style='color:#57e08a'>技能、等级与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
-    "· 击杀敌人升级，<b>三选一技能可以叠加成型</b><br>" +
+    "<b style='color:#57e08a'>技能、属性与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
     "· 通关第 2 章解锁 <b>无尽模式</b><br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
@@ -2457,25 +2535,32 @@ function showShop() {
   $("sLevels").onclick = showLevelSelect;
   $("sBack").onclick = showMenu;
 }
-/* ---------------- 升级三选一 ---------------- */
-function rollChoices(p, n) {
+/* ---------------- 升级流程：先选属性，再从该系抽技能 ---------------- */
+function rollChoices(p, n, color) {
   const s = p.st;
-  const pool = SKILLS.filter((sk) => {
+  const usable = (sk) => {
     const cnt = p.skills[sk.id] || 0;
     if (cnt >= sk.max) return false;
     if (sk.req && !sk.req(s)) return false;
     if (sk.id === "dash" && (p.skills.dash || 0) >= 1) return false;
     return true;
-  });
-  const out = [];
+  };
   const wOf = (sk) => (sk.r === 1 ? 100 : sk.r === 2 ? 46 : 15) * (1 + (p.skills[sk.id] || 0) * -0.08);
-  const tmp = pool.slice();
-  while (out.length < n && tmp.length) {
-    let total = 0; for (const sk of tmp) total += wOf(sk);
-    let r = Math.random() * total, chosen = tmp[0];
-    for (const sk of tmp) { r -= wOf(sk); if (r <= 0) { chosen = sk; break; } }
-    out.push(chosen); tmp.splice(tmp.indexOf(chosen), 1);
-  }
+  const draw = (list, want) => {
+    const tmp = list.slice(), got = [];
+    while (got.length < want && tmp.length) {
+      let total = 0; for (const sk of tmp) total += wOf(sk);
+      let r = Math.random() * total, chosen = tmp[0];
+      for (const sk of tmp) { r -= wOf(sk); if (r <= 0) { chosen = sk; break; } }
+      got.push(chosen); tmp.splice(tmp.indexOf(chosen), 1);
+    }
+    return got;
+  };
+  // 主池：所选属性的技能；不足时用其它系补足（保证总能三选一）
+  const main = color ? SKILLS.filter((sk) => sk.attr === color && usable(sk)) : [];
+  const rest = SKILLS.filter((sk) => (!color || sk.attr !== color) && usable(sk));
+  let out = draw(main, n);
+  if (out.length < n) out = out.concat(draw(rest.filter((sk) => out.indexOf(sk) < 0), n - out.length));
   if (p.hp < p.maxHp * 0.55 && out.length && Math.random() < 0.55) out[out.length - 1] = HEAL_CARD;
   return out;
 }
@@ -2488,25 +2573,77 @@ function openLevelUp() {
   if (!p) { G.state = "playing"; lastT = performance.now(); hideOverlay(); return; }
   G.state = "levelup";
   Input.endAll();
-  Sfx.levelup(); haptic(30);
   G.lvP = p;
-  const cards = rollChoices(p, 3);
-  const tag = G.twoP ? pName(p) : "";
-  let html = '<h1 class="title" style="font-size:24px">' + (tag ? tag + " 升级！" : "升 级 ！") + "</h1>" +
-    '<div class="subtitle">' + (G.twoP ? pName(p) + " · " : "") + "Lv." + p.level + " · 技能只增不减，重复选会叠加层数</div><div class='cards'>";
+  if (p.pendingAttr && anyAttrLeft(p)) { showAttrPick(p); return; }
+  if (p.pendingAttr) { p.pendingAttr = false; if (!p.lastAttr) p.lastAttr = "red"; toast("三系属性已全部满级，之后只出技能卡", 1500); }
+  showSkillPick(p);
+}
+/* 第一步：三系属性三选一（点数有限 → 必须取舍） */
+function showAttrPick(p) {
+  Sfx.levelup(); haptic(30);
+  const tag = G.twoP ? pName(p) + " · " : "";
+  let html = '<h1 class="title" style="font-size:24px">' + tag + "升 级 ！</h1>" +
+    '<div class="subtitle">第 1 步 / 共 2 步 · 选择要强化的属性（点数有限，集中才强）</div>' +
+    '<div class="cards">';
+  ATTR_ORDER.forEach((k, i) => {
+    const a = ATTRS[k], cur = attrLv(p, k), full = cur >= ATTR_MAX;
+    if (full) {
+      html += '<div class="card" style="border-color:#ffffff22;opacity:.45">' +
+        '<div class="ic">' + a.icon + "</div>" +
+        '<div class="nm" style="color:#7f90ad">' + a.name + "</div>" +
+        '<div class="ds" style="font-size:11px">已达上限 Lv.' + ATTR_MAX + "</div>" +
+        '<div class="rr" style="background:#26324a;color:#8ea0c0">已满级</div></div>';
+      return;
+    }
+    html += '<div class="card attr" data-i="' + i + '" style="border-color:' + a.color + ';box-shadow:0 0 22px ' + a.color + '44">' +
+      '<div class="ic">' + a.icon + "</div>" +
+      '<div class="nm" style="color:' + a.color + '">' + a.name + "</div>" +
+      '<div class="ds" style="font-size:11px">' + a.desc + "</div>" +
+      '<div class="stackline">Lv.' + cur + " → <b style='color:" + a.color + "'>Lv." + (cur + 1) + "</b>（上限 " + ATTR_MAX + "）<br>" +
+      "该系技能强度 <b>" + attrDmgMul(p, k).toFixed(2) + "×</b> → <b style='color:" + a.color + "'>" + (1 + a.dmgK * (cur + 1)).toFixed(2) + "×</b></div>" +
+      '<div class="rr" style="background:' + a.color + '33;color:' + a.color + '">本系技能 ' + SKILLS.filter((s) => s.attr === k).length + " 个</div></div>";
+  });
+  html += "</div>";
+  html += '<div class="tip" style="font-size:11px">当前：' + ATTR_ORDER.map((k) => ATTRS[k].icon + ATTRS[k].name + " Lv." + attrLv(p, k)).join("　") + "</div>";
+  showOverlay(html, true);
+  overlay.querySelectorAll(".card[data-i]").forEach((n) => n.onclick = () => {
+    const k = ATTR_ORDER[+n.dataset.i];
+    p.attrs[k] = attrLv(p, k) + 1;
+    p.lastAttr = k;
+    p.pendingAttr = false;
+    refreshStats(p, true);
+    layoutSkillBar();
+    Sfx.pick(); haptic(20);
+    toast(ATTRS[k].icon + " " + ATTRS[k].name + " 提升到 Lv." + p.attrs[k] + "（该系技能强度 ×" + attrDmgMul(p, k).toFixed(2) + "）", 1600);
+    showSkillPick(p);
+  });
+}
+/* 第二步：从该系技能池抽三张 */
+function showSkillPick(p) {
+  const color = p.lastAttr || "red";
+  const a = ATTRS[color] || ATTRS.red;
+  const cards = rollChoices(p, 3, color);
+  const tag = G.twoP ? pName(p) + " · " : "";
+  let html = '<h1 class="title" style="font-size:24px">' + tag + "升 级 ！</h1>" +
+    '<div class="subtitle">第 2 步 / 共 2 步 · <b style="color:' + a.color + '">' + a.icon + " " + a.name +
+    " Lv." + attrLv(p, color) + "</b>（该系技能 ×" + attrDmgMul(p, color).toFixed(2) + "）· 重复选同一技能会叠加层数</div><div class='cards'>";
   cards.forEach((c, i) => {
     const cnt = p.skills[c.id] || 0;
     const nextEff = c.descOf ? c.descOf(cnt + 1) : c.desc;
+    const cAttr = c.id === "heal" ? null : ATTRS[c.attr];
+    const offColor = cAttr && c.attr !== color;
     const stackLine = c.id === "heal" ? "" :
       '<div class="stackline">' + (cnt > 0
-        ? "已拥有 <b>×" + cnt + "</b> → 叠加为 <b style='color:#ffd479'>×" + (cnt + 1) + "</b>" + (c.max < 90 ? "（上限 " + c.max + "）" : "")
+        ? "已拥有 <b>×" + cnt + "</b> → 叠加为 <b style='color:#ffd479'>×" + (cnt + 1) + "</b>（上限 " + c.max + "）"
         : "获得新技能 <b>×1</b>") + "</div>";
-    html += '<div class="card r' + (c.r || 1) + '" data-i="' + i + '">' +
+    html += '<div class="card r' + (c.r || 1) + (cAttr ? " attr" : "") + '" data-i="' + i + '"' +
+      (cAttr ? ' style="border-color:' + cAttr.color + (offColor ? "66" : "") + '"' : "") + ">" +
       '<div class="ic">' + c.icon + "</div>" +
       '<div class="nm">' + c.name + (cnt > 0 ? ' <span style="color:#ffd479;font-size:12px">Lv.' + (cnt + 1) + "</span>" : "") + "</div>" +
       '<div class="ds">' + nextEff + "</div>" +
       stackLine +
-      '<div class="rr">' + (c.id === "heal" ? "恢复" : c.r === 3 ? "传说" : c.r === 2 ? "稀有" : "普通") + "</div></div>";
+      '<div class="rr" style="' + (cAttr ? "background:" + cAttr.color + "33;color:" + cAttr.color : "") + '">' +
+      (c.id === "heal" ? "恢复" : cAttr.icon + cAttr.name + " · " + (c.r === 3 ? "传说" : c.r === 2 ? "稀有" : "普通")) + "</div></div>";
   });
   html += "</div>";
   showOverlay(html, true);
@@ -2518,15 +2655,17 @@ function pickCard(p, c) {
   else {
     p.skills[c.id] = (p.skills[c.id] || 0) + 1;
     refreshStats(p, true);
-    if (c.id === "hp") healPlayer(p, 18, false);
+    if (c.id === "hp") healPlayer(p, 18 * (p.st.fGrn || 1), false);
     const cnt = p.skills[c.id];
     const eff = c.descOf ? c.descOf(cnt) : c.desc;
-    msg = c.icon + " " + c.name + " 叠加到 ×" + cnt + (cnt > 1 ? "　" + eff : "");
+    const a = ATTRS[c.attr];
+    msg = c.icon + " " + c.name + " 叠加到 ×" + cnt + (cnt > 1 ? "　" + eff : "") + (a ? "　【" + a.name + "】" : "");
     if (cnt > 1) Sfx.levelup();
   }
   toast(msg, 1600);
   Sfx.pick(); haptic(14);
   p.pendingLv = Math.max(0, (p.pendingLv || 0) - 1);
+  p.pendingAttr = true;          // 下一次升级重新先选属性
   layoutSkillBar();
   const nxt = nextPendingPlayer();
   if (nxt) { openLevelUp(); return; }
@@ -2538,19 +2677,36 @@ function skillCountText() {
   return players.map((p) => (G.twoP ? pName(p) + " " : "") + Object.keys(p.skills).length + " 种").join(" · ");
 }
 /* 技能清单：把「已经拿了什么、叠到几层、当前实际效果」摊开给玩家看 */
+function attrBadges(p) {
+  return ATTR_ORDER.map((k) => {
+    const a = ATTRS[k];
+    const lv = attrLv(p, k);
+    return '<span class="abadge" style="color:' + a.color + ';border-color:' + a.color + '55">' + a.icon + " " + a.name + " " + lv + (lv >= ATTR_MAX ? "★" : "") + "</span>";
+  }).join("");
+}
 function skillListHtml(p) {
   const ids = Object.keys(p.skills);
   if (!ids.length) return '<div class="tip" style="padding:8px">还没有获得任何技能</div>';
-  ids.sort((a, b) => (SKILL_MAP[b] ? SKILL_MAP[b].r : 0) - (SKILL_MAP[a] ? SKILL_MAP[a].r : 0));
-  return ids.map((id) => {
-    const sk = SKILL_MAP[id]; if (!sk) return "";
-    const n = p.skills[id];
-    const maxed = n >= sk.max;
-    const eff = sk.descOf ? sk.descOf(n) : sk.desc;
-    return '<div class="item"><div class="ic">' + sk.icon + "</div>" +
-      "<div class='tx'><div class='nm'>" + sk.name + ' <span style="color:#ffd479">×' + n + "</span>" +
-      (maxed ? ' <span style="color:#8ea0c0;font-size:10px">已满级</span>' : "") + "</div>" +
-      "<div class='ds'>" + eff + "　<span style='color:#7f90ad'>[" + (sk.max < 90 ? n + "/" + sk.max : "无上限") + "]</span></div></div></div>";
+  const groups = ATTR_ORDER.map((k) => ({ k: k, a: ATTRS[k], list: ids.filter((id) => SKILL_MAP[id] && SKILL_MAP[id].attr === k) }))
+    .filter((g) => g.list.length);
+  const other = ids.filter((id) => !SKILL_MAP[id] || !SKILL_MAP[id].attr);
+  if (other.length) groups.push({ k: null, a: { name: "其他", icon: "⚪", color: "#93a4c4" }, list: other });
+  return groups.map((g) => {
+    const head = '<div class="item" style="background:#0e1729;border-color:' + g.a.color + '55">' +
+      '<div class="ic">' + g.a.icon + "</div><div class='tx'><div class='nm' style='color:" + g.a.color + "'>" + g.a.name +
+      (g.k ? " Lv." + attrLv(p, g.k) + "　<span style='color:#7f90ad;font-size:11px'>技能强度 ×" + attrDmgMul(p, g.k).toFixed(2) + "</span>" : "") +
+      "</div></div></div>";
+    const items = g.list.sort((a, b) => (SKILL_MAP[b].r || 0) - (SKILL_MAP[a].r || 0)).map((id) => {
+      const sk = SKILL_MAP[id];
+      const n = p.skills[id];
+      const maxed = n >= sk.max;
+      const eff = sk.descOf ? sk.descOf(n) : sk.desc;
+      return '<div class="item"><div class="ic">' + sk.icon + "</div>" +
+        "<div class='tx'><div class='nm'>" + sk.name + ' <span style="color:#ffd479">×' + n + "</span>" +
+        (maxed ? ' <span style="color:#8ea0c0;font-size:10px">已满级</span>' : "") + "</div>" +
+        "<div class='ds'>" + eff + "　<span style='color:#7f90ad'>[" + n + "/" + sk.max + "]</span></div></div></div>";
+    }).join("");
+    return head + items;
   }).join("");
 }
 function playerHpText() {
@@ -2558,7 +2714,9 @@ function playerHpText() {
 }
 function showPause() {
   const skillPanels = players.map((p) =>
-    '<div class="panel"><h2>' + (G.twoP ? pName(p) + " · " : "") + "技能清单（" + Object.keys(p.skills).length + " 种，层数可叠加）</h2>" +
+    '<div class="panel"><h2>' + (G.twoP ? pName(p) + " · " : "") + "属性与技能（" + Object.keys(p.skills).length + " 种技能）</h2>" +
+    '<div class="attrrow" style="margin:0 0 8px">' + attrBadges(p) +
+    '<span class="abadge" style="color:#ffd479;border-color:#ffd47955">本体箭矢 ×' + colorlessMul(p).toFixed(2) + "</span></div>" +
     '<div class="list">' + skillListHtml(p) + "</div></div>").join("");
   showOverlay(
     '<h1 class="title" style="font-size:26px">暂 停</h1>' +
