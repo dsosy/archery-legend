@@ -1,0 +1,17 @@
+{
+  "name": "弓箭传说 · 复刻版",
+  "short_name": "弓箭传说",
+  "description": "拖动摇杆移动、自动射箭的闯关 Roguelike：35 个技能、章节 BOSS、无尽模式",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
