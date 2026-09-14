@@ -896,6 +896,7 @@ function playerDie(p) {
     return;
   }
   G.state = "dead";
+  G.carry = null; G.carryNext = null;   // 阵亡 = 本局结束，下一关不再继承
   setTimeout(() => { if (G.endless) endlessGameOver(); else showDefeat(false); }, 900);
 }
 function gainExp(p, v) {
@@ -1444,18 +1445,33 @@ function startRun(chapter, level, endless, opts) {
   G.twoP = !!opts.twoP;
   G.challenge = opts.challenge || null;
   setLayoutSeed(G.challenge ? G.challenge.seed : null);
-  RUN.kills = 0; RUN.revived = false;
-  G.runCoins = 0; G.runKills = 0; G.runTime = 0;
-  G.pendingLevelUps = 0; G.lvQueue = [];
   const n = G.twoP ? 2 : 1;
+  // 整局继承：技能 / 等级 / 经验 / 生命比例都带到下一关（死亡、放弃、重开才清零）
+  const keep = !!opts.keep && Array.isArray(G.carry) && G.carry.length === n;
+  const carryFrom = keep ? G.carry : null;
+  if (!keep) {
+    G.carry = null;
+    RUN.kills = 0; RUN.revived = false;
+    G.runCoins = 0; G.runKills = 0; G.runTime = 0;
+    G.revivesLeft = save.perm.revive;
+  }
+  G.pendingLevelUps = 0; G.lvQueue = [];
   players = [];
+  let carried = 0;
   for (let i = 0; i < n; i++) {
     const p = createPlayer(i);
+    const c = carryFrom ? carryFrom[i] : null;
+    if (c) {
+      p.skills = Object.assign({}, c.skills || {});
+      p.level = c.level || 1;
+      p.exp = c.exp || 0;
+      carried = Math.max(carried, Object.keys(p.skills).length);
+    }
     refreshStats(p, false);
-    p.hp = p.maxHp;
+    p.hp = c ? clamp(Math.round(p.maxHp * (c.hpRatio === undefined ? 1 : c.hpRatio)), Math.round(p.maxHp * 0.35), p.maxHp) : p.maxHp;
+    p.pendingLv = 0; p.down = false; p.alive = true;
     players.push(p);
   }
-  G.revivesLeft = save.perm.revive;
   arrows = []; ebullets = []; enemies = []; pickups = []; parts = []; floats = []; effects = [];
   G.rooms = endless ? buildEndlessRooms(1) : buildLevel(chapter, level);
   G.room = 0;
@@ -1471,9 +1487,25 @@ function startRun(chapter, level, endless, opts) {
   el.btnDash.classList.toggle("hidden", players[0].st.dash <= 0);
   el.btnDash2.classList.toggle("hidden", !(G.twoP && players[1].st.dash > 0));
   layoutSkillBar(); layoutHud();
-  toast((G.challenge ? "⚔ 好友挑战 · " + (G.challenge.name || "好友") : endless ? "无尽模式 · 第 1 波" : chapterName(chapter) + " " + chapter + "-" + level), 1500);
+  const head = G.challenge ? "⚔ 好友挑战 · " + (G.challenge.name || "好友")
+    : endless ? (G.endlessWave === 1 ? "无尽模式 · 第 1 波" : "无尽 · 第 " + G.endlessWave + " 波")
+      : chapterName(chapter) + " " + chapter + "-" + level;
+  toast(keep && carried ? head + "　🔗 继承 " + carried + " 种技能 / Lv." + players[0].level : head, 1700);
 }
 function chapterName(ch) { const c = CHAPTERS[(ch - 1) % CHAPTERS.length]; return c ? c.name : "深渊"; }
+/* 整局继承快照：技能 / 等级 / 经验 / 生命比例 */
+function snapshotCarry() {
+  G.carry = players.map((p) => ({
+    skills: Object.assign({}, p.skills),
+    level: p.level,
+    exp: p.exp || 0,
+    hpRatio: p.maxHp > 0 ? clamp((p.hp || 0) / p.maxHp, 0.35, 1) : 1
+  }));
+}
+function carrySkillCount() {
+  if (!G.carry || !G.carry.length) return 0;
+  return Math.max.apply(null, G.carry.map((c) => Object.keys(c.skills || {}).length));
+}
 function roomTier() {
   return G.endless ? tierOf(1 + Math.floor(G.endlessWave / 8) % 3, 1 + (G.endlessWave % 8), G.endlessWave) : tierOf(G.chapter, G.level, 0);
 }
@@ -1585,6 +1617,10 @@ function nextRoom() {
 }
 function levelCleared() {
   G.state = "clear";
+  snapshotCarry();                 // 把本关的技能/等级存档，下一关继承
+  G.carryNext = (G.level + 1) <= CHAPTER_MAX_LEVEL
+    ? { chapter: G.chapter, level: G.level + 1 }
+    : { chapter: Math.min(G.chapter + 1, CHAPTERS.length), level: 1 };
   const key = G.chapter + "-" + G.level;
   const first = !save.progress[key];
   save.progress[key] = true;
@@ -1605,8 +1641,7 @@ function levelCleared() {
   Sfx.clear();
   showVictory(bonus);
 }
-function endlessGameOver() {
-  G.state = "dead";
+function endlessGameOver() {  G.state = "dead";
   save.endlessBest = Math.max(save.endlessBest || 0, G.endlessWave);
   persist(true);
   showDefeat(true);
@@ -2092,7 +2127,10 @@ function showMenu() {
     (save.endlessBest ? "　无尽最高：<b style='color:#ffd479'>" + save.endlessBest + " 波</b>" : "") +
     "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
-    '<button class="btn primary" id="mContinue">▶ 继续闯关　' + chapterName(save.chapter) + " " + save.chapter + "-" + save.level + "</button>" +
+    (carrySkillCount() && G.carryNext
+      ? '<button class="btn primary" id="mKeep" style="border-color:#57e08aaa;background:linear-gradient(180deg,#4bd88a,#1f9c5b);color:#04170d">🔗 继续上局（继承 ' + carrySkillCount() + " 种技能）→ " + chapterName(G.carryNext.chapter) + " " + G.carryNext.chapter + "-" + G.carryNext.level + "</button>"
+      : "") +
+    '<button class="btn " id="mContinue">▶ 新的一局　' + chapterName(save.chapter) + " " + save.chapter + "-" + save.level + "</button>" +
     '<button class="btn" id="mCoop" style="border-color:#8fd0ffaa;background:linear-gradient(180deg,#2a4a6e,#16283c);color:#eaf6ff">👥 双人同屏（和朋友一起玩）</button>' +
     '<div class="row">' +
     '<button class="btn ghost" id="mLevels">🗺 关卡选择</button>' +
@@ -2108,6 +2146,7 @@ function showMenu() {
     '<div class="tip">单人：按住屏幕任意位置拖动摇杆　·　双人：左半屏 = P1、右半屏 = P2，各自摇杆互不干扰</div>'
   );
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
+  if ($("mKeep")) $("mKeep").onclick = () => startRun(G.carryNext.chapter, G.carryNext.level, false, { twoP: G.twoP, keep: true });
   $("mCoop").onclick = () => showLevelSelect(true);
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
@@ -2143,7 +2182,8 @@ function showHelp() {
     "· 电脑：P1 用 <span class='kbd'>WASD</span>+<span class='kbd'>空格</span>，P2 用 <span class='kbd'>方向键</span>+<span class='kbd'>Shift</span><br>" +
     "· 两人各自升级、各自选技能、各自有血条；一人倒下后，<b>清空当前房间即可复活</b><br>" +
     "· 双人时敌人血量 ×1.75，配合才能走远<br><br>" +
-    "<b style='color:#ffd479'>闯关</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
+    "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
+    "<b style='color:#57e08a'>技能、等级与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
     "· 击杀敌人升级，<b>三选一技能可以叠加成型</b><br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
     "· 通关第 2 章解锁 <b>无尽模式</b><br><br>" +
@@ -2495,15 +2535,23 @@ function showVictory(bonus) {
     "击杀敌人　<b>" + RUN.kills + "</b>　·　技能　<b>" + skillCountText() + "</b><br>" +
     "用时　<b>" + Math.floor(G.runTime) + " 秒</b>" +
     "</div></div>" +
+    (carrySkillCount()
+      ? '<div class="panel" style="border-color:#57e08a88;text-align:center"><div style="font-size:12px;line-height:1.8;color:#c9d7f0">' +
+        "🔗 <b style='color:#57e08a'>技能与等级会继承到下一关</b><br>" +
+        "当前 " + carrySkillCount() + " 种技能 · Lv." + (players[0] ? players[0].level : 1) +
+        "（死亡或返回主菜单才会重新开始）</div></div>"
+      : '<div class="panel" style="border-color:#57e08a66;text-align:center"><div style="font-size:12px;line-height:1.8;color:#c9d7f0">' +
+        "🔗 <b style='color:#57e08a'>技能与等级会继承到下一关</b><br>" +
+        "<span style='color:#93a4c4'>本关没有获得技能，下一关会继续积累</span></div></div>") +
     '<div class="row" style="flex-direction:column">' +
-    (hasNext ? '<button class="btn primary" id="vNext">▶ 下一关 ' + G.chapter + "-" + nextLv + "</button>" : '<button class="btn primary" id="vNextCh">▶ 进入下一章</button>') +
+    (hasNext ? '<button class="btn primary" id="vNext">▶ 下一关 ' + G.chapter + "-" + nextLv + "（继承技能）</button>" : '<button class="btn primary" id="vNextCh">▶ 进入下一章（继承技能）</button>') +
     '<div class="row">' +
     '<button class="btn ghost" id="vShop">⚒ 强化 &amp; 武器</button>' +
     '<button class="btn ghost" id="vMenu">🏠 主菜单</button>' +
     "</div></div>"
   );
-  if (hasNext) $("vNext").onclick = () => startRun(G.chapter, nextLv, false, { twoP: G.twoP });
-  else $("vNextCh").onclick = () => startRun(Math.min(G.chapter + 1, CHAPTERS.length), 1, false, { twoP: G.twoP });
+  if (hasNext) $("vNext").onclick = () => startRun(G.chapter, nextLv, false, { twoP: G.twoP, keep: true });
+  else $("vNextCh").onclick = () => startRun(Math.min(G.chapter + 1, CHAPTERS.length), 1, false, { twoP: G.twoP, keep: true });
   $("vShop").onclick = showShop;
   $("vMenu").onclick = showMenu;
 }
