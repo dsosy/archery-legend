@@ -146,6 +146,9 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 .pill{font-size:11px;font-weight:800;color:#0e141f;background:linear-gradient(180deg,var(--gold),var(--gold2));border-radius:9px;padding:5px 10px;white-space:nowrap}
 .pill.off{background:#26324a;color:#8ea0c0}
 .tip{font-size:11px;color:var(--dim);line-height:1.7;text-align:center;max-width:600px}
+.nameinput{width:100%;padding:11px 12px;border-radius:12px;border:1.5px solid #3a4f78;background:#0e1729;color:#e9f0ff;
+  font-size:16px;text-align:center;font-weight:700;letter-spacing:1px;outline:none}
+.nameinput:focus{border-color:#ffd479aa;box-shadow:0 0 0 3px #ffd47922}
 .kbd{display:inline-block;background:#1d2942;border:1px solid #3d527a;border-radius:5px;padding:0 5px;font-size:11px;margin:0 1px}
 #toast{position:absolute;left:50%;top:calc(18% + var(--safeT));transform:translateX(-50%);z-index:30;pointer-events:none;
   display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -684,12 +687,17 @@ const PLAYER_COLORS = [
   { name: "P1", body0: "#ffffff", body1: "#9fe870", body2: "#2f7a3f", bow: "#f5d6a0", ui: "#9fe870" },
   { name: "P2", body0: "#ffffff", body1: "#8fd0ff", body2: "#2b6fa8", bow: "#ffd7a0", ui: "#8fd0ff" }
 ];
+/* 双人昵称：显示用；留空时回落到「玩家1 / 玩家2」 */
+function pName(p) { return (p && p.name) ? p.name : (p && p.idx === 1 ? "玩家2" : "玩家1"); }
+function setupNames() {
+  return [(String(save.p1Name || "").trim() || "玩家1"), (String(save.p2Name || "").trim() || "玩家2")];
+}
 
 function createPlayer(idx) {
   const c = PLAYER_COLORS[idx] || PLAYER_COLORS[0];
   const b = BOUND();
   const p = {
-    idx: idx, color: c,
+    idx: idx, color: c, name: "",
     x: idx === 0 ? V.w * 0.38 : V.w * 0.62, y: V.h * 0.55,
     r: 15 * V.scale, hp: 100, maxHp: 100, shield: 0, st: computeStats(null), skills: {},
     level: 1, exp: 0, pendingLv: 0,
@@ -881,8 +889,8 @@ function playerDie(p) {
     spawnParticles(p.x, p.y, "#ffd479", 26, 320, 0.8, 6, true);
     toast(label); Sfx.levelup(); haptic(40);
   };
-  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ " + p.color.name + " 凤凰之心 · 复活！"); return; }
-  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ " + p.color.name + " 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); return; }
+  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之心 · 复活！"); return; }
+  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); return; }
   p.alive = false;
   p.hp = 0;
   Sfx.die(); haptic([40, 60, 40]);
@@ -892,7 +900,7 @@ function playerDie(p) {
   if (others.length > 0) {
     // 双人：一人倒下，另一人继续；清空当前房间后队友原地复活
     p.down = true;
-    toast("💀 " + p.color.name + " 倒下！清空房间后复活", 2200);
+    toast("💀 " + pName(p) + " 倒下！清空房间后复活", 2200);
     return;
   }
   G.state = "dead";
@@ -1460,6 +1468,7 @@ function startRun(chapter, level, endless, opts) {
   let carried = 0;
   for (let i = 0; i < n; i++) {
     const p = createPlayer(i);
+    p.name = G.twoP ? setupNames()[i] : "你";
     const c = carryFrom ? carryFrom[i] : null;
     if (c) {
       p.skills = Object.assign({}, c.skills || {});
@@ -1517,7 +1526,7 @@ function loadRoom() {
   const b = BOUND();
   players.forEach((p, i) => {
     // 队友复活：清空房间后原地满血一半复活
-    if (p.down) { p.down = false; p.alive = true; p.hp = Math.round(p.maxHp * 0.5); p.invuln = 2.0; toast("🩹 " + p.color.name + " 重新加入战斗！", 1200); }
+    if (p.down) { p.down = false; p.alive = true; p.hp = Math.round(p.maxHp * 0.5); p.invuln = 2.0; toast("🩹 " + pName(p) + " 重新加入战斗！", 1200); }
     if (p.st.shieldMax > 0) p.shield = p.st.shieldMax;
     p.x = clamp(V.w * (G.twoP ? (i === 0 ? 0.36 : 0.64) : 0.5), b.l + 30, b.r - 30);
     p.y = clamp(V.h * 0.72, b.t + 30, b.b - 30);
@@ -1671,6 +1680,7 @@ function layoutSkillBar() {
   el.btnDash2.classList.toggle("hidden", !(G.twoP && players[1] && players[1].st.dash > 0));
 }
 function layoutHud() { }
+function playerTag(p) { return G.twoP ? pName(p) : "P1"; }
 function paintBar(fillEl, shEl, txtEl, lvEl, p, tag) {
   const mx = p.maxHp || 1;
   const hp = Math.max(0, p.hp);
@@ -1683,10 +1693,10 @@ function paintBar(fillEl, shEl, txtEl, lvEl, p, tag) {
 }
 function updateHud() {
   if (!players.length) return;
-  paintBar(el.hpFill, el.shFill, el.hpTxt, el.lvTag, players[0], "P1");
+  paintBar(el.hpFill, el.shFill, el.hpTxt, el.lvTag, players[0], playerTag(players[0]));
   el.xpFill.style.width = ((players[0].exp || 0) / expNeed(players[0].level) * 100).toFixed(1) + "%";
   if (G.twoP && players[1]) {
-    paintBar(el.hpFill2, el.shFill2, el.hpTxt2, el.lvTag2, players[1], "P2");
+    paintBar(el.hpFill2, el.shFill2, el.hpTxt2, el.lvTag2, players[1], playerTag(players[1]));
     el.xpFill2.style.width = ((players[1].exp || 0) / expNeed(players[1].level) * 100).toFixed(1) + "%";
   }
   el.coinTxt.textContent = "🪙 " + fmt(save.coins);
@@ -1877,7 +1887,7 @@ function drawPlayer(p) {
     ctx2d.textAlign = "center"; ctx2d.textBaseline = "bottom";
     ctx2d.fillStyle = p.color.ui;
     ctx2d.globalAlpha = 1;
-    ctx2d.fillText(p.color.name, p.x, p.y - r - 6);
+    ctx2d.fillText(pName(p), p.x, p.y - r - 6);
   }
 }
 function enemyShape(e) {
@@ -2147,7 +2157,7 @@ function showMenu() {
   );
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
   if ($("mKeep")) $("mKeep").onclick = () => startRun(G.carryNext.chapter, G.carryNext.level, false, { twoP: G.twoP, keep: true });
-  $("mCoop").onclick = () => showLevelSelect(true);
+  $("mCoop").onclick = () => showCoopSetup();
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
@@ -2178,7 +2188,8 @@ function showHelp() {
     '<div class="panel"><div class="tip" style="text-align:left">' +
     "<b style='color:#ffd479'>操作 · 单人</b><br>· 手机：<b>按住屏幕任意位置拖动</b>出摇杆，角色自动朝最近敌人射箭<br>" +
     "· 电脑：<span class='kbd'>WASD</span> 移动，<span class='kbd'>空格</span> 冲刺，<span class='kbd'>P</span> 暂停<br><br>" +
-    "<b style='color:#8fd0ff'>操作 · 双人同屏</b><br>· 左半屏 = <b style='color:#9fe870'>P1</b>，右半屏 = <b style='color:#8fd0ff'>P2</b>，两根手指各拖各的摇杆<br>" +
+    "<b style='color:#8fd0ff'>操作 · 双人同屏</b><br>· <b>进入前先给两位玩家输入昵称</b>（名字会显示在血条、升级卡、技能清单和角色头顶，留空则是「玩家1 / 玩家2」）<br>" +
+    "· 左半屏 = <b style='color:#9fe870'>P1</b>，右半屏 = <b style='color:#8fd0ff'>P2</b>，两根手指各拖各的摇杆<br>" +
     "· 电脑：P1 用 <span class='kbd'>WASD</span>+<span class='kbd'>空格</span>，P2 用 <span class='kbd'>方向键</span>+<span class='kbd'>Shift</span><br>" +
     "· 两人各自升级、各自选技能、各自有血条；一人倒下后，<b>清空当前房间即可复活</b><br>" +
     "· 双人时敌人血量 ×1.75，配合才能走远<br><br>" +
@@ -2198,6 +2209,43 @@ function showHelp() {
     '<button class="btn primary" id="hBack">返回</button>'
   );
   $("hBack").onclick = showMenu;
+}
+/* ---------------- 双人同屏：进入前先填昵称 ---------------- */
+function showCoopSetup(fromLevels) {
+  G.state = "menu";
+  el.hud.classList.add("hidden");
+  const nm = setupNames();
+  showOverlay(
+    '<h1 class="title" style="font-size:26px">双 人 同 屏</h1>' +
+    '<div class="subtitle">先给两位玩家起个名字</div>' +
+    '<div class="panel">' +
+    '<div style="font-size:12px;font-weight:900;color:#9fe870;margin-bottom:5px">P1 · 操作左半屏</div>' +
+    '<input id="n1" maxlength="8" placeholder="玩家1" value="' + esc(save.p1Name || "") + '" class="nameinput">' +
+    '<div style="font-size:12px;font-weight:900;color:#8fd0ff;margin:12px 0 5px">P2 · 操作右半屏</div>' +
+    '<input id="n2" maxlength="8" placeholder="玩家2" value="' + esc(save.p2Name || "") + '" class="nameinput">' +
+    "</div>" +
+    '<div class="row"><button class="btn primary" id="csGo">👥 开始选关</button>' +
+    '<button class="btn ghost" id="csRand">🎲 随机名字</button></div>' +
+    '<button class="btn ghost small" id="csBack">返回主菜单</button>' +
+    '<div class="tip">昵称会显示在血条、升级卡、技能清单和角色头顶<br>留空则默认为「玩家1 / 玩家2」　·　名字会记住，下次不用再输</div>'
+  );
+  const n1 = $("n1"), n2 = $("n2");
+  const commit = () => {
+    save.p1Name = (n1.value || "").trim().slice(0, 8);
+    save.p2Name = (n2.value || "").trim().slice(0, 8);
+    persist(true);
+  };
+  const start = () => { commit(); Sfx.pick(); showLevelSelect(true); };
+  $("csGo").onclick = start;
+  n1.onkeydown = n2.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); start(); } };
+  $("csRand").onclick = () => {
+    const A = ["阿弓", "小箭", "箭神", "铁头", "夜莺", "战神", "小鹿", "老王", "猎手", "疾风", "大熊", "团子"];
+    const B = ["神射", "飞羽", "无敌", "冲鸭", "神箭手", "莽夫", "葫芦", "阿飞", "闪电", "小熊", "雷神", "萌新"];
+    n1.value = A[(Math.random() * A.length) | 0];
+    n2.value = B[(Math.random() * B.length) | 0];
+    commit();
+  };
+  $("csBack").onclick = () => { commit(); showMenu(); };
 }
 function showLevelSelect(twoP) {
   const chs = CHAPTERS;
@@ -2226,6 +2274,13 @@ function showLevelSelect(twoP) {
   showOverlay(
     '<h1 class="title" style="font-size:24px">' + (coop ? "双人同屏 · 选关" : "关卡选择") + "</h1>" +
     '<div class="row"><div class="tab' + (coop ? "" : " on") + '" id="pTog1">👤 单人</div><div class="tab' + (coop ? " on" : "") + '" id="pTog2">👥 双人同屏</div></div>' +
+    (coop ? '<div class="row" style="font-size:13px;align-items:center;margin-bottom:4px">' +
+      '<span style="color:#9fe870;font-weight:900">' + esc(setupNames()[0]) + "</span>" +
+      '<span style="color:#7f90ad;font-size:11px">（左半屏）</span>' +
+      '<span style="color:#7f90ad"> VS </span>' +
+      '<span style="color:#8fd0ff;font-weight:900">' + esc(setupNames()[1]) + "</span>" +
+      '<span style="color:#7f90ad;font-size:11px">（右半屏）</span>' +
+      '<button class="btn ghost small" id="pTogName" style="margin-left:6px">✏️ 改昵称</button></div>' : "") +
     '<div class="tabs">' + tabs + "</div>" +
     '<div class="panel"><div class="grid-lv">' + grid + "</div></div>" +
     '<div class="panel"><h2>武器（点击装备 / 购买）</h2><div class="list">' + wl + "</div></div>" +
@@ -2235,6 +2290,7 @@ function showLevelSelect(twoP) {
   );
   $("pTog1").onclick = () => showLevelSelect(false);
   $("pTog2").onclick = () => showLevelSelect(true);
+  if ($("pTogName")) $("pTogName").onclick = () => showCoopSetup();
   overlay.querySelectorAll(".tab[data-ch]").forEach((t) => t.onclick = () => {
     selCh = +t.dataset.ch;
     if (!save.unlocked[selCh]) { toast("尚未解锁该章节"); return; }
@@ -2435,9 +2491,9 @@ function openLevelUp() {
   Sfx.levelup(); haptic(30);
   G.lvP = p;
   const cards = rollChoices(p, 3);
-  const tag = G.twoP ? p.color.name : "";
+  const tag = G.twoP ? pName(p) : "";
   let html = '<h1 class="title" style="font-size:24px">' + (tag ? tag + " 升级！" : "升 级 ！") + "</h1>" +
-    '<div class="subtitle">' + (G.twoP ? p.color.name + " · " : "") + "Lv." + p.level + " · 技能只增不减，重复选会叠加层数</div><div class='cards'>";
+    '<div class="subtitle">' + (G.twoP ? pName(p) + " · " : "") + "Lv." + p.level + " · 技能只增不减，重复选会叠加层数</div><div class='cards'>";
   cards.forEach((c, i) => {
     const cnt = p.skills[c.id] || 0;
     const nextEff = c.descOf ? c.descOf(cnt + 1) : c.desc;
@@ -2479,7 +2535,7 @@ function pickCard(p, c) {
   hideOverlay();
 }
 function skillCountText() {
-  return players.map((p) => (G.twoP ? p.color.name + " " : "") + Object.keys(p.skills).length + " 种").join(" · ");
+  return players.map((p) => (G.twoP ? pName(p) + " " : "") + Object.keys(p.skills).length + " 种").join(" · ");
 }
 /* 技能清单：把「已经拿了什么、叠到几层、当前实际效果」摊开给玩家看 */
 function skillListHtml(p) {
@@ -2498,11 +2554,11 @@ function skillListHtml(p) {
   }).join("");
 }
 function playerHpText() {
-  return players.map((p) => (G.twoP ? p.color.name + " " : "") + Math.max(0, Math.round(p.hp)) + "/" + p.maxHp).join(" · ");
+  return players.map((p) => (G.twoP ? pName(p) + " " : "") + Math.max(0, Math.round(p.hp)) + "/" + p.maxHp).join(" · ");
 }
 function showPause() {
   const skillPanels = players.map((p) =>
-    '<div class="panel"><h2>' + (G.twoP ? p.color.name + " · " : "") + "技能清单（" + Object.keys(p.skills).length + " 种，层数可叠加）</h2>" +
+    '<div class="panel"><h2>' + (G.twoP ? pName(p) + " · " : "") + "技能清单（" + Object.keys(p.skills).length + " 种，层数可叠加）</h2>" +
     '<div class="list">' + skillListHtml(p) + "</div></div>").join("");
   showOverlay(
     '<h1 class="title" style="font-size:26px">暂 停</h1>' +
