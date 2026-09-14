@@ -213,6 +213,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 /* =========================================================================
    弓箭传说 · 复刻版（单文件 H5）
    ========================================================================= */
+const BUILD = "v1.3 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -2265,8 +2266,10 @@ function showMenu() {
     '<button class="btn ghost small" id="mSound">' + (save.sound ? "🔊 音效开" : "🔇 音效关") + "</button>" +
     '<button class="btn ghost small" id="mFull">⛶ 全屏</button>' +
     '<button class="btn ghost small" id="mReset">🗑 清档</button>' +
+    '<button class="btn ghost small" id="mUpdate">🔄 检查更新</button>' +
     "</div></div>" +
-    '<div class="tip">单人：按住屏幕任意位置拖动摇杆　·　双人：左半屏 = P1、右半屏 = P2，各自摇杆互不干扰</div>'
+    '<div class="tip">单人：按住屏幕任意位置拖动摇杆　·　双人：左半屏 = P1、右半屏 = P2，各自摇杆互不干扰<br>' +
+    '<span style="font-size:10px;color:#7f90ad">版本 ' + BUILD + '　·　更新后仍是旧版？点「🔄 检查更新」强制刷新</span></div>'
   );
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
   if ($("mKeep")) $("mKeep").onclick = () => startRun(G.carryNext.chapter, G.carryNext.level, false, { twoP: G.twoP, keep: true });
@@ -2279,6 +2282,11 @@ function showMenu() {
   if ($("mAccept")) $("mAccept").onclick = () => startRun(1, 1, true, { twoP: false, challenge: ch });
   $("mSound").onclick = () => { save.sound = !save.sound; persist(true); showMenu(); Sfx.resume(); };
   $("mFull").onclick = () => requestFull();
+  $("mUpdate").onclick = () => {
+    toast("正在重新加载最新版本…", 1200);
+    const u = location.pathname + "?t=" + Date.now() + location.hash;
+    setTimeout(() => location.replace(u), 150);
+  };
   $("mReset").onclick = () => {
     if (confirm("确定清空所有进度、硬币与强化？")) { save = defaultSave(); persist(true); showMenu(); }
   };
