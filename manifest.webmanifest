@@ -1,7 +1,7 @@
 {
-  "name": "弓箭传说 · 复刻版",
-  "short_name": "弓箭传说",
-  "description": "拖动摇杆移动、自动射箭的闯关 Roguelike：35 个技能、章节 BOSS、无尽模式",
+  "name": "音帝庙大冒险",
+  "short_name": "音帝庙",
+  "description": "拖动摇杆移动、自动射箭的闯关 Roguelike：双人同屏、好友挑战、35 个技能、章节 BOSS、无尽模式",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",

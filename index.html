@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>弓箭传说 · 复刻版</title>
+<title>音帝庙大冒险</title>
 <style>
 :root{
   --gold:#ffd479; --gold2:#ffb02e; --ink:#0a0e18; --ink2:#121a2c; --line:#2a3854;
@@ -54,6 +54,24 @@ canvas#cv{position:absolute;left:0;top:0;width:100%;height:100%;display:block;z-
   color:var(--txt);font-size:15px;display:grid;place-items:center;cursor:pointer;pointer-events:auto}
 .iconbtn:active{transform:scale(.94)}
 #skillBar{position:absolute;left:calc(8px + var(--safeL));bottom:calc(6px + var(--safeB));display:flex;flex-wrap:wrap;gap:4px;max-width:60%}
+#skillBar2{position:absolute;right:calc(8px + var(--safeR));bottom:calc(6px + var(--safeB));display:flex;flex-wrap:wrap;gap:4px;max-width:34%;justify-content:flex-end}
+.hud-p2{margin-top:5px;width:100%}
+.bar.p2 .fill{background:linear-gradient(180deg,#8fd0ff,#2b7fd8);box-shadow:0 0 12px #4ab6ff88}
+.bar.p2{border-color:#4a86c8}
+.bar.p2.xp{border-color:#3d5a8e}
+.bar.p2.xp .fill{background:linear-gradient(180deg,#9fc4ff,#4b6fd8)}
+.lvtag.p2{background:linear-gradient(180deg,#9fd8ff,#3d8fd6);color:#04121f}
+.skchip.p2{border-color:#4a86c8;background:#0d1a2ce0}
+.stick-base.p2{border-color:#8fd0ff55;background:radial-gradient(circle,#4ab6ff18,#4ab6ff05 70%,transparent)}
+.stick-knob.p2{background:radial-gradient(circle at 36% 32%,#ffffffcc,#4a9fdd88);border-color:#8fd0ff77;box-shadow:0 0 18px #4ab6ff66}
+#btnDash2{position:absolute;right:calc(16px + var(--safeR));bottom:calc(24px + var(--safeB));width:74px;height:74px;border-radius:50%;
+  border:2px solid #8fd0ff88;background:radial-gradient(circle at 40% 35%,#2c6f9ecc,#0d2233dd);color:#dff3ff;font-size:26px;
+  pointer-events:auto;box-shadow:0 6px 18px #0009, 0 0 22px #46c6ff44;display:grid;place-items:center;transition:transform .08s}
+#btnDash2:active{transform:scale(.92)}
+#btnDash2.cd{filter:grayscale(.8) brightness(.6)}
+/* 双人时：P1 冲刺键移到左下，给 P2 让出右下 */
+#hud.two-p #btnDash{left:calc(16px + var(--safeL));right:auto;bottom:calc(58px + var(--safeB))}
+#hud.two-p #skillBar{bottom:calc(6px + var(--safeB));max-width:52%}
 .skchip{width:30px;height:30px;border-radius:9px;background:#0d1424e0;border:1.5px solid #3a4f78;display:grid;place-items:center;
   font-size:15px;position:relative;box-shadow:0 2px 6px #0007}
 .skchip b{position:absolute;right:-2px;bottom:-3px;font-size:9px;background:var(--gold2);color:#1a1206;border-radius:6px;
@@ -151,10 +169,10 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
         <div class="bar hp"><div class="fill" id="hpFill"></div><div class="shieldfill" id="shFill"></div>
           <div class="bar-txt" id="hpTxt">100/100</div></div>
         <div class="bar xp"><div class="fill" id="xpFill" style="width:0%"></div></div>
-        <div class="lvtag" id="lvTag">Lv.1</div>
+        <div class="lvtag" id="lvTag">P1 · Lv.1</div>
       </div>
       <div class="hud-mid">
-        <div class="stage" id="stageTxt">森林 1-1</div>
+        <div class="stage" id="stageTxt">幽暗森林 1-1</div>
         <div class="sub" id="roomTxt">房间 1/4</div>
       </div>
       <div class="hud-right">
@@ -162,9 +180,18 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
         <button class="iconbtn" id="btnPause">⏸</button>
       </div>
     </div>
+    <div class="hud-p2 hidden" id="p2hud">
+      <div class="bar hp p2"><div class="fill" id="hpFill2"></div><div class="shieldfill" id="shFill2"></div>
+        <div class="bar-txt" id="hpTxt2">100/100</div></div>
+      <div class="bar xp p2"><div class="fill" id="xpFill2" style="width:0%"></div></div>
+      <div class="lvtag p2" id="lvTag2">P2 · Lv.1</div>
+    </div>
     <div id="skillBar"></div>
+    <div id="skillBar2" class="hidden"></div>
     <button id="btnDash" class="hidden">💨</button>
+    <button id="btnDash2" class="hidden">💨</button>
     <div id="stick" class="hidden"><div class="stick-base"></div><div class="stick-knob" id="stickKnob"></div></div>
+    <div id="stick2" class="hidden"><div class="stick-base p2"></div><div class="stick-knob p2" id="stickKnob2"></div></div>
   </div>
 
   <div id="overlay"></div>
@@ -185,6 +212,25 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const dist2 = (a, b) => (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
 const lerp = (a, b, t) => a + (b - a) * t;
 const fmt = (n) => (n >= 10000 ? (n / 1000).toFixed(1) + "k" : Math.round(n).toString());
+/* 关卡布局专用随机源：好友挑战时替换为同一颗种子，保证两人遇到完全相同的关卡 */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seedFromString(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+let LR = Math.random;                       // layout rng
+function setLayoutSeed(seed) { LR = seed ? mulberry32(seedFromString(String(seed).toUpperCase())) : Math.random; }
+const Lrand = (a, b) => a + LR() * (b - a);
+const LrandInt = (a, b) => Math.floor(a + LR() * (b - a + 1));
+const Lpick = (arr) => arr[(LR() * arr.length) | 0];
 
 /* ======================= 存档 ======================= */
 const SAVE_KEY = "archery_legend_v1";
@@ -197,7 +243,8 @@ function defaultSave() {
     progress: {},          // {"1-3":true}
     unlocked: { 1: 1 },    // 每章解锁到第几关
     chapter: 1, level: 1,
-    sound: true, best: 0, endlessBest: 0, endlessUnlocked: false
+    sound: true, best: 0, endlessBest: 0, endlessUnlocked: false,
+    playerName: "", challenges: []
   };
 }
 let save = defaultSave();
@@ -287,7 +334,10 @@ const el = {
   hud: $("hud"), hpFill: $("hpFill"), shFill: $("shFill"), hpTxt: $("hpTxt"),
   xpFill: $("xpFill"), lvTag: $("lvTag"), stageTxt: $("stageTxt"), roomTxt: $("roomTxt"),
   coinTxt: $("coinTxt"), skillBar: $("skillBar"), stick: $("stick"), stickKnob: $("stickKnob"),
-  btnDash: $("btnDash"), btnPause: $("btnPause")
+  btnDash: $("btnDash"), btnPause: $("btnPause"),
+  p2hud: $("p2hud"), hpFill2: $("hpFill2"), shFill2: $("shFill2"), hpTxt2: $("hpTxt2"),
+  xpFill2: $("xpFill2"), lvTag2: $("lvTag2"), skillBar2: $("skillBar2"),
+  stick2: $("stick2"), stickKnob2: $("stickKnob2"), btnDash2: $("btnDash2")
 };
 function toast(msg, ms) {
   const d = document.createElement("div");
@@ -303,10 +353,16 @@ const G = {
   room: 0, rooms: [], chapter: 1, level: 1, endless: false, endlessWave: 0,
   enemiesLeft: 0, roomClear: false, roomClearTimer: 0,
   runCoins: 0, runKills: 0, runTime: 0, revivesLeft: 0, weapon: "bow",
-  pendingLevelUps: 0
+  pendingLevelUps: 0,
+  twoP: false,        // 双人同屏
+  lvQueue: [],        // 待升级的玩家序号队列
+  challenge: null     // {seed, name, score, kind} 好友挑战
 };
-let player = null, enemies = [], arrows = [], ebullets = [], pickups = [], parts = [], floats = [], effects = [];
+let players = [], enemies = [], arrows = [], ebullets = [], pickups = [], parts = [], floats = [], effects = [];
 const MAX_ENEMIES = 30;
+function P1() { return players[0]; }
+function alivePlayers() { return players.filter((p) => p.alive || p.down); }
+function activePlayers() { return players.filter((p) => p.alive && !p.down); }
 
 /* ======================= 画布 / 自适应（折叠屏展开/折叠都适配） ======================= */
 const V = { w: 400, h: 700, dpr: 1, scale: 1, safeTop: 0, safeBot: 0 };
@@ -333,68 +389,91 @@ if (window.visualViewport) {
 }
 resize();
 
-/* ======================= 输入：虚拟摇杆 + 键盘 ======================= */
+/* ======================= 输入：双虚拟摇杆 + 分键盘 ======================= */
+/* 单人：屏幕任意位置拖动。双人：左半屏 = P1，右半屏 = P2，各自独立触点。 */
+function makeStick(node, knob) {
+  return {
+    active: false, id: -1, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, node: node, knob: knob,
+    maxR() { return clamp(Math.min(V.w, V.h) * 0.15, 38, 76); },
+    start(id, x, y) {
+      this.active = true; this.id = id; this.ox = x; this.oy = y;
+      this.node.classList.remove("hidden");
+      this.node.style.left = x + "px"; this.node.style.top = y + "px";
+      this.node.style.transform = "scale(" + (this.maxR() * 2 / 150).toFixed(3) + ")";
+      this.update(x, y);
+    },
+    update(x, y) {
+      if (!this.active) return;
+      const R = this.maxR();
+      let dx = x - this.ox, dy = y - this.oy;
+      const m = Math.hypot(dx, dy);
+      if (m > R) { this.ox += (dx / m) * (m - R) * 0.55; this.oy += (dy / m) * (m - R) * 0.55; }
+      this.node.style.left = this.ox + "px"; this.node.style.top = this.oy + "px";
+      dx = x - this.ox; dy = y - this.oy;
+      const m2 = Math.hypot(dx, dy) || 1;
+      const k = Math.min(m2, R) / R;
+      this.mag = k;
+      if (m2 > 4) { this.dx = (dx / m2) * k; this.dy = (dy / m2) * k; } else { this.dx = 0; this.dy = 0; this.mag = 0; }
+      this.knob.style.transform = "translate(" + (dx / m2) * Math.min(m2, R) + "px," + (dy / m2) * Math.min(m2, R) + "px)";
+    },
+    end(id) {
+      if (id !== undefined && id !== this.id) return;
+      this.active = false; this.id = -1; this.dx = this.dy = 0; this.mag = 0;
+      this.node.classList.add("hidden");
+      this.knob.style.transform = "none";
+    }
+  };
+}
 const Input = {
-  active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0, dx: 0, dy: 0, mag: 0,
+  sticks: [],                 // [P1, P2]
   keys: {},
-  maxR() { return clamp(Math.min(V.w, V.h) * 0.16, 42, 82); },
-  start(id, x, y) {
-    this.active = true; this.id = id; this.ox = x; this.oy = y; this.x = x; this.y = y;
-    el.stick.classList.remove("hidden");
-    el.stick.style.left = x + "px"; el.stick.style.top = y + "px";
-    const s = this.maxR() * 2 / 150;
-    el.stick.style.transform = "scale(" + s.toFixed(3) + ")";
-    this.update(x, y);
+  init() {
+    this.sticks = [makeStick(el.stick, el.stickKnob), makeStick(el.stick2, el.stickKnob2)];
   },
-  update(x, y) {
-    if (!this.active) return;
-    const R = this.maxR();
-    let dx = x - this.ox, dy = y - this.oy;
-    const m = Math.hypot(dx, dy);
-    if (m > R) { this.ox += (dx / m) * (m - R) * 0.55; this.oy += (dy / m) * (m - R) * 0.55; }
-    el.stick.style.left = this.ox + "px"; el.stick.style.top = this.oy + "px";
-    dx = x - this.ox; dy = y - this.oy;
-    const m2 = Math.hypot(dx, dy) || 1;
-    const k = Math.min(m2, R) / R;
-    this.x = x; this.y = y;
-    this.mag = k;
-    if (m2 > 4) { this.dx = (dx / m2) * k; this.dy = (dy / m2) * k; } else { this.dx = 0; this.dy = 0; this.mag = 0; }
-    el.stickKnob.style.transform = "translate(" + (dx / m2) * Math.min(m2, R) + "px," + (dy / m2) * Math.min(m2, R) + "px)";
-  },
-  end(id) {
-    if (id !== undefined && id !== this.id) return;
-    this.active = false; this.id = -1; this.dx = this.dy = 0; this.mag = 0;
-    el.stick.classList.add("hidden");
-    el.stickKnob.style.transform = "none";
-  },
-  dir() {
-    let x = this.dx, y = this.dy;
-    if (this.keys["ArrowLeft"] || this.keys["a"] || this.keys["A"]) x -= 1;
-    if (this.keys["ArrowRight"] || this.keys["d"] || this.keys["D"]) x += 1;
-    if (this.keys["ArrowUp"] || this.keys["w"] || this.keys["W"]) y -= 1;
-    if (this.keys["ArrowDown"] || this.keys["s"] || this.keys["S"]) y += 1;
+  stickFor(idx) { return this.sticks[idx]; },
+  dir(idx) {
+    const s = this.sticks[idx] || this.sticks[0];
+    let x = s ? s.dx : 0, y = s ? s.dy : 0;
+    const k = this.keys;
+    // 双人：P1 只用 WASD、P2 只用方向键，互不抢键；单人：P1 同时吃两套键
+    const K = idx === 0
+      ? (G.twoP ? [["a", "A", null, -1, 0], ["d", "D", null, 1, 0], ["w", "W", null, 0, -1], ["s", "S", null, 0, 1]]
+                : [["a", "A", "ArrowLeft", -1, 0], ["d", "D", "ArrowRight", 1, 0], ["w", "W", "ArrowUp", 0, -1], ["s", "S", "ArrowDown", 0, 1]])
+      : [["ArrowLeft", null, null, -1, 0], ["ArrowRight", null, null, 1, 0], ["ArrowUp", null, null, 0, -1], ["ArrowDown", null, null, 0, 1]];
+    for (const g of K) {
+      if ((g[0] && k[g[0]]) || (g[1] && k[g[1]]) || (g[2] && k[g[2]])) { x += g[3]; y += g[4]; }
+    }
     const m = Math.hypot(x, y);
     if (m < 0.001) return { x: 0, y: 0, m: 0 };
     return { x: x / m, y: y / m, m: Math.min(1, m) };
-  }
+  },
+  endAll() { this.sticks.forEach((s) => s && s.end()); }
 };
-function isUI(t) { return t && t.closest && t.closest("#overlay, .iconbtn, .btn, #btnDash, .pill, .lvcell, .card, .tab, .item"); }
+function isUI(t) { return t && t.closest && t.closest("#overlay, .iconbtn, .btn, #btnDash, #btnDash2, .pill, .lvcell, .card, .tab, .item"); }
+Input.init();
 cv.addEventListener("pointerdown", (e) => {
   Sfx.resume();
   if (G.state !== "playing") return;
-  if (Input.active) return;
-  // 指针捕获可能失败（部分浏览器/合成事件），绝不能因此中断摇杆初始化
+  Input.init && (Input.sticks.length || Input.init());
+  // 双人：按触点在左半屏/右半屏分派；单人：任意触点都用 P1
+  let idx = 0;
+  if (G.twoP) idx = e.clientX < V.w * 0.5 ? 0 : 1;
+  const s = Input.sticks[idx];
+  if (!s || s.active) return;
   try { cv.setPointerCapture && cv.setPointerCapture(e.pointerId); } catch (err) { }
-  Input.start(e.pointerId, e.clientX, e.clientY);
+  s.start(e.pointerId, e.clientX, e.clientY);
   e.preventDefault();
 });
-window.addEventListener("pointermove", (e) => { if (Input.active && e.pointerId === Input.id) Input.update(e.clientX, e.clientY); });
-window.addEventListener("pointerup", (e) => Input.end(e.pointerId));
-window.addEventListener("pointercancel", (e) => Input.end(e.pointerId));
+window.addEventListener("pointermove", (e) => {
+  for (const s of Input.sticks) if (s && s.active && e.pointerId === s.id) s.update(e.clientX, e.clientY);
+});
+function pointerEnd(e) { for (const s of Input.sticks) if (s && s.active) s.end(e.pointerId); }
+window.addEventListener("pointerup", pointerEnd);
+window.addEventListener("pointercancel", pointerEnd);
 window.addEventListener("keydown", (e) => {
   Sfx.resume();
   Input.keys[e.key] = true;
-  if (e.key === " " || e.key === "Shift") { doDash(); e.preventDefault(); }
+  if (e.key === " " || e.key === "Shift") { doDash(e.key === " " ? 0 : 1); e.preventDefault(); }
   if (e.key === "Escape" || e.key === "p" || e.key === "P") { if (G.state === "playing") pauseGame(); else if (G.state === "paused") resumeGame(); }
 });
 window.addEventListener("keyup", (e) => { Input.keys[e.key] = false; });
@@ -405,7 +484,7 @@ document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: fals
 function haptic(ms) { try { navigator.vibrate && navigator.vibrate(ms || 12); } catch (e) { } }
 
 function onResizeGame() {
-  if (player) { player.x = clamp(player.x, 40, V.w - 40); player.y = clamp(player.y, 40, V.h - 40); }
+  for (const p of players) { p.x = clamp(p.x, 40, V.w - 40); p.y = clamp(p.y, 40, V.h - 40); }
   layoutHud();
 }
 /* ======================= 武器 ======================= */
@@ -522,14 +601,14 @@ function buildLevel(ch, lv) {
       const pool = CHAPTERS[(ch - 1) % CHAPTERS.length].pool;
       let left = Math.min(cnt, 9);
       while (left > 0) {
-        const t = pick(pool);
-        const k = Math.min(left, randInt(1, 3));
+        const t = Lpick(pool);
+        const k = Math.min(left, LrandInt(1, 3));
         list.push({ t: t, n: k });
         left -= k;
       }
       waves.push(list);
     }
-    const elite = (!last && lv >= 3 && i === Math.floor(roomCount / 2) - 0 && Math.random() < 0.28 + lv * 0.02);
+    const elite = (!last && lv >= 3 && i === Math.floor(roomCount / 2) - 0 && LR() < 0.28 + lv * 0.02);
     rooms.push({ waves: waves, kind: elite ? "elite" : "normal", tier: tier });
   }
   return rooms;
@@ -545,16 +624,17 @@ function buildEndlessRooms(wave) {
   return rooms;
 }
 /* ======================= 属性结算 ======================= */
-const RUN = { skills: {}, stats: null, endless: false };
-function computeStats() {
+const RUN = { kills: 0, revived: false };
+function computeStats(p) {
   const s = {
     atkMul: 1, aspdMul: 1, speedMul: 1, hpAdd: 0, crit: 0.05, critMul: 1.5, arrows: 1, pierce: 0, bounce: 0, homing: 0,
     split: 0, boom: 0, fire: 0, ice: 0, bolt: 0, side: 0, rear: 0, orbit: 0, thorns: 0, lifesteal: 0, vamp: 0, magnet: 0,
     dodge: 0, guard: 0, luck: 0, shieldMax: 0, dash: 0, slowmo: 0, thunder: 0, revive: 0, regen: 0, rage: 0, spiral: 0, execute: 0, big: 1
   };
   const w = WEAPONS[G.weapon] || WEAPONS.bow;
-  for (const id in RUN.skills) {
-    const n = RUN.skills[id], sk = SKILL_MAP[id];
+  const skills = (p && p.skills) || {};
+  for (const id in skills) {
+    const n = skills[id], sk = SKILL_MAP[id];
     if (sk && sk.apply) sk.apply(s, n);
   }
   s.pierce += w.pierce || 0;
@@ -573,49 +653,62 @@ function computeStats() {
   s.maxHp = 130 + s.hpAdd;
   return s;
 }
-function refreshStats(healGain) {
-  const s = computeStats();
-  const oldMax = player.maxHp || 0;
-  player.st = s;
-  player.maxHp = Math.round(s.maxHp);
-  if (healGain) player.hp += Math.max(0, player.maxHp - oldMax);
-  player.hp = Math.min(player.hp, player.maxHp);
-  if (player.hp <= 0) player.hp = player.maxHp;
+function refreshStats(p, healGain) {
+  const s = computeStats(p);
+  const oldMax = p.maxHp || 0;
+  p.st = s;
+  p.maxHp = Math.round(s.maxHp);
+  if (healGain) p.hp += Math.max(0, p.maxHp - oldMax);
+  p.hp = Math.min(p.hp, p.maxHp);
+  if (p.hp <= 0) p.hp = p.maxHp;
   layoutSkillBar();
 }
-function atkOf() {
-  const st = player.st;
+function refreshAllStats(healGain) { for (const p of players) refreshStats(p, healGain); }
+function atkOf(p) {
+  const st = p.st;
   let a = st.baseDmg * st.atkMul;
-  a *= 1 + Math.max(0, (player.level || 1) - 1) * 0.025;   // 本局等级越高攻击越强，平滑对抗关卡成长
-  if (st.rage > 0) { const miss = 1 - player.hp / player.maxHp; a *= 1 + st.rage * miss; }
+  a *= 1 + Math.max(0, (p.level || 1) - 1) * 0.025;   // 本局等级越高攻击越强，平滑对抗关卡成长
+  if (st.rage > 0) { const miss = 1 - p.hp / p.maxHp; a *= 1 + st.rage * miss; }
   return a;
 }
-function aspdOf() { return player.st.baseAspd * player.st.aspdMul; }
-function speedOf() { return player.st.baseSpeed * player.st.speedMul; }
-function pickupRange() { return 46 * (1 + player.st.magnet * 0.85); }
+function aspdOf(p) { return p.st.baseAspd * p.st.aspdMul; }
+function speedOf(p) { return p.st.baseSpeed * p.st.speedMul; }
+function pickupRange(p) { return 46 * (1 + p.st.magnet * 0.85); }
 
 /* ======================= 实体创建 ======================= */
 const BOUND = () => ({ l: 18, r: V.w - 18, t: 18, b: V.h - 18 });
+const PLAYER_COLORS = [
+  { name: "P1", body0: "#ffffff", body1: "#9fe870", body2: "#2f7a3f", bow: "#f5d6a0", ui: "#9fe870" },
+  { name: "P2", body0: "#ffffff", body1: "#8fd0ff", body2: "#2b6fa8", bow: "#ffd7a0", ui: "#8fd0ff" }
+];
 
-function createPlayer() {
-  return {
-    x: V.w / 2, y: V.h / 2, r: 15 * V.scale, hp: 100, maxHp: 100, shield: 0, st: computeStats(),
+function createPlayer(idx) {
+  const c = PLAYER_COLORS[idx] || PLAYER_COLORS[0];
+  const b = BOUND();
+  const p = {
+    idx: idx, color: c,
+    x: idx === 0 ? V.w * 0.38 : V.w * 0.62, y: V.h * 0.55,
+    r: 15 * V.scale, hp: 100, maxHp: 100, shield: 0, st: computeStats(null), skills: {},
+    level: 1, exp: 0, pendingLv: 0,
     face: -Math.PI / 2, shootT: 0, invuln: 1.2, hitFlash: 0, dashCd: 0, dashT: 0, dashDir: { x: 0, y: 0 },
-    walk: 0, orbitA: 0, orbitHit: {}, spiralT: 4.5, thunderT: 3, alive: true, kx: 0, ky: 0
+    walk: 0, orbitA: 0, orbitHit: {}, spiralT: 4.5, thunderT: 3, alive: true, down: false, downT: 0, kx: 0, ky: 0, regenAcc: 0
   };
+  return p;
 }
-function spawnArrow(ang, o) {
+function spawnArrow(p, ang, o) {
   o = o || {};
-  const st = player.st;
+  const st = p.st;
   const spd = o.speed || 640;
-  const dmg = (o.dmg !== undefined ? o.dmg : atkOf()) * (o.dmgMul || 1);
+  const dmg = (o.dmg !== undefined ? o.dmg : atkOf(p)) * (o.dmgMul || 1);
   arrows.push({
-    x: o.x !== undefined ? o.x : player.x + Math.cos(ang) * player.r * 0.9,
-    y: o.y !== undefined ? o.y : player.y + Math.sin(ang) * player.r * 0.9,
+    owner: p,
+    x: o.x !== undefined ? o.x : p.x + Math.cos(ang) * p.r * 0.9,
+    y: o.y !== undefined ? o.y : p.y + Math.sin(ang) * p.r * 0.9,
     vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, ang: ang,
     dmg: dmg, r: (o.r || 5) * st.big * V.scale, len: (o.len || 17) * st.big * V.scale,
-    life: o.life || 1.5, pierce: o.pierce !== undefined ? o.pierce : st.pierce, bounce: o.bounce !== undefined ? o.bounce : st.bounce,
-    homing: o.homing !== undefined ? o.homing : st.homing, hit: [], mini: !!o.mini, color: o.color || "#ffe9a8"
+    life: o.life || 1.85, pierce: o.pierce !== undefined ? o.pierce : st.pierce, bounce: o.bounce !== undefined ? o.bounce : st.bounce,
+    homing: o.homing !== undefined ? o.homing : st.homing, hit: [], mini: !!o.mini,
+    color: o.color || (p.idx === 1 ? "#bfe6ff" : "#ffe9a8")
   });
 }
 function spawnEnemy(typeKey, opts) {
@@ -623,32 +716,32 @@ function spawnEnemy(typeKey, opts) {
   const base = ENEMIES[typeKey] || ENEMIES.slime;
   const tier = opts.tier !== undefined ? opts.tier : tierOf(G.chapter, G.level, G.endless ? G.endlessWave : 0);
   const elite = !!opts.elite;
-  const mHp = hpScale(tier) * (elite ? 2.1 : 1) * (opts.hpMul || 1);
-  const mDmg = dmgScale(tier) * (elite ? 1.25 : 1);
+  const mHp = hpScale(tier) * (elite ? 2.1 : 1) * (opts.hpMul || 1) * (G.twoP ? 1.75 : 1);
+  const mDmg = dmgScale(tier) * (elite ? 1.25 : 1) * (G.twoP ? 0.92 : 1);
   const b = BOUND();
   let x, y;
-  const side = opts.side !== undefined ? opts.side : randInt(0, 3);
+  const side = opts.side !== undefined ? opts.side : LrandInt(0, 3);
   if (opts.x !== undefined) { x = opts.x; y = opts.y; }
   else {
-    if (side === 0) { x = rand(b.l + 20, b.r - 20); y = b.t + rand(10, 60); }
-    else if (side === 1) { x = b.r - rand(10, 60); y = rand(b.t + 20, b.b - 20); }
-    else if (side === 2) { x = rand(b.l + 20, b.r - 20); y = b.b - rand(10, 60); }
-    else { x = b.l + rand(10, 60); y = rand(b.t + 20, b.b - 20); }
+    if (side === 0) { x = Lrand(b.l + 20, b.r - 20); y = b.t + Lrand(10, 60); }
+    else if (side === 1) { x = b.r - Lrand(10, 60); y = Lrand(b.t + 20, b.b - 20); }
+    else if (side === 2) { x = Lrand(b.l + 20, b.r - 20); y = b.b - Lrand(10, 60); }
+    else { x = b.l + Lrand(10, 60); y = Lrand(b.t + 20, b.b - 20); }
   }
   const e = {
     type: typeKey, name: elite ? "精英·" + base.name : base.name, x: x, y: y,
     r: base.r * V.scale * (elite ? 1.22 : 1), hp: base.hp * mHp, maxHp: base.hp * mHp,
     dmg: base.dmg * mDmg, speed: base.speed, exp: base.exp * (elite ? 2.2 : 1), coin: base.coin * (elite ? 3 : 1) * (1 + Math.floor(tier / 4)),
     color: base.color, ai: base.ai, armor: base.armor || 0, elite: elite, tier: tier,
-    atkCd: base.atkCd || 0, atkT: rand(0.4, 1.6), vx: 0, vy: 0, hitFlash: 0, slow: 0, iceStacks: 0,
-    burn: 0, burnT: 0, burnSrc: 0, chargeState: 0, chargeT: 0, wob: rand(0, TAU), state: 0, anim: 0, dead: false, boss: false
+    atkCd: base.atkCd || 0, atkT: Lrand(0.4, 1.6), vx: 0, vy: 0, hitFlash: 0, slow: 0, iceStacks: 0,
+    burn: 0, burnT: 0, burnSrc: 0, chargeState: 0, chargeT: 0, wob: Lrand(0, TAU), state: 0, anim: 0, dead: false, boss: false
   };
   enemies.push(e);
   return e;
 }
 function spawnBoss(bossId, tier) {
   const base = BOSSES.find((b) => b.id === bossId) || BOSSES[0];
-  const mHp = Math.pow(hpScale(tier), 0.85);
+  const mHp = Math.pow(hpScale(tier), 0.85) * (G.twoP ? 1.8 : 1);
   const b = BOUND();
   const e = {
     type: "boss", bossId: base.id, name: base.name, x: V.w / 2, y: b.t + 90, r: base.r * clamp(V.scale, 0.8, 1.3),
@@ -691,7 +784,8 @@ function lightningBolt(x1, y1, x2, y2, color) {
 function hurtEnemy(e, dmg, opts) {
   if (e.dead) return 0;
   opts = opts || {};
-  const st = player.st;
+  const p = opts.owner || players[0];
+  const st = p.st;
   let d = dmg;
   let crit = false;
   if (!opts.noCrit && Math.random() < st.crit) { crit = true; d *= st.critMul; }
@@ -700,21 +794,24 @@ function hurtEnemy(e, dmg, opts) {
   d = Math.max(1, d);
   e.hp -= d;
   e.hitFlash = 0.12;
-  addFloat(e.x + rand(-6, 6), e.y - e.r - 4, Math.round(d).toString(), crit ? "#ffd479" : "#ffffff", crit ? 19 : 14, crit);
+  e.lastHitBy = p;
+  addFloat(e.x + rand(-6, 6), e.y - e.r - 4, Math.round(d).toString(), crit ? "#ffd479" : (p.idx === 1 ? "#cfe9ff" : "#ffffff"), crit ? 19 : 14, crit);
   spawnParticles(e.x, e.y, crit ? "#ffd479" : "#ffffff", crit ? 7 : 3, 130, 0.3, 3);
   if (crit) Sfx.crit(); else Sfx.hit();
-  // 命中特效
   if (opts.fire || st.fire > 0) { e.burn = Math.max(e.burn, 2.2); e.burnSrc = 4 + st.fire * 3.2; }
   if (opts.ice || st.ice > 0) { e.slow = Math.max(e.slow, 0.9); e.iceStacks = Math.min(3, st.ice); }
-  if (st.vamp > 0 && Math.random() < 0.15 * st.vamp * (opts.hits || 1)) healPlayer(1, false);
+  if (st.vamp > 0 && Math.random() < 0.15 * st.vamp * (opts.hits || 1)) healPlayer(p, 1, false);
   if (e.hp <= 0) killEnemy(e, opts);
   return d;
 }
 function killEnemy(e, opts) {
   if (e.dead) return;
   e.dead = true;
-  const st = player.st;
+  opts = opts || {};
+  const p = opts.owner || e.lastHitBy || players[0];
+  const st = p.st;
   RUN.kills = (RUN.kills || 0) + 1;
+  G.noKillT = 0; G.rageLv = 0;
   spawnParticles(e.x, e.y, e.color, e.boss ? 34 : e.elite ? 18 : 10, e.boss ? 380 : 240, 0.55, e.boss ? 7 : 4.5, true);
   ring(e.x, e.y, e.boss ? 150 : e.r * 2.4, e.color, e.boss ? 0.55 : 0.28);
   Sfx.die();
@@ -734,8 +831,8 @@ function killEnemy(e, opts) {
     for (let i = 0; i < Math.min(6, coins); i++) dropPickup(e.x + rand(-14, 14), e.y + rand(-14, 14), "coin", 1);
     if (Math.random() < (e.elite ? 0.55 : 0.06)) dropPickup(e.x, e.y, "heart", 1);
   }
-  if (st.lifesteal > 0) healPlayer(st.lifesteal, false);
-  gainExp(e.exp);
+  if (st.lifesteal > 0) healPlayer(p, st.lifesteal, false);
+  gainExp(p, e.exp);
 }
 function dropPickup(x, y, type, val) {
   const b = BOUND();
@@ -744,63 +841,84 @@ function dropPickup(x, y, type, val) {
     vx: rand(-60, 60), vy: rand(-60, 60), life: 22, t: 0, r: (type === "heart" ? 9 : 6) * V.scale
   });
 }
-function healPlayer(v, big) {
-  if (!player.alive) return;
-  player.hp = Math.min(player.maxHp, player.hp + v);
-  addFloat(player.x, player.y - 24 * V.scale, "+" + Math.round(v), "#6ef2a0", 14);
-  if (big) ring(player.x, player.y, 40 * V.scale, "#6ef2a0", 0.4);
+function healPlayer(p, v, big) {
+  if (!p || !p.alive || p.down) return;
+  p.hp = Math.min(p.maxHp, p.hp + v);
+  addFloat(p.x, p.y - 24 * V.scale, "+" + Math.round(v), "#6ef2a0", 14);
+  if (big) ring(p.x, p.y, 40 * V.scale, "#6ef2a0", 0.4);
 }
-function hurtPlayer(dmg, src) {
-  if (!player.alive || player.invuln > 0 || player.dashT > 0) return;
-  const st = player.st;
+function hurtPlayer(p, dmg, src) {
+  if (!p || !p.alive || p.down || p.invuln > 0 || p.dashT > 0) return;
+  const st = p.st;
   if (Math.random() < st.dodge) {
-    addFloat(player.x, player.y - 26 * V.scale, "闪避", "#9fdcff", 15);
-    ring(player.x, player.y, 30 * V.scale, "#9fdcff", 0.25);
-    player.invuln = 0.35; return;
+    addFloat(p.x, p.y - 26 * V.scale, "闪避", "#9fdcff", 15);
+    ring(p.x, p.y, 30 * V.scale, "#9fdcff", 0.25);
+    p.invuln = 0.35; return;
   }
   let d = dmg * (1 - clamp(st.guard || 0, 0, 0.6));
-  if (src && src.type === "boss") d *= 1.0;
-  if (player.shield > 0) {
-    const absorb = Math.min(player.shield, d);
-    player.shield -= absorb; d -= absorb;
-    ring(player.x, player.y, 34 * V.scale, "#8fd8ff", 0.3);
+  if (p.shield > 0) {
+    const absorb = Math.min(p.shield, d);
+    p.shield -= absorb; d -= absorb;
+    ring(p.x, p.y, 34 * V.scale, "#8fd8ff", 0.3);
   }
-  if (d > 0) { player.hp -= d; addFloat(player.x, player.y - 26 * V.scale, "-" + Math.round(d), "#ff7a8a", 15); }
-  player.hitFlash = 0.25; player.invuln = 0.88;
+  if (d > 0) { p.hp -= d; addFloat(p.x, p.y - 26 * V.scale, "-" + Math.round(d), "#ff7a8a", 15); }
+  p.hitFlash = 0.25; p.invuln = 0.88;
   G.shake = Math.max(G.shake, 7); Sfx.hurt(); haptic(28);
-  spawnParticles(player.x, player.y, "#ff5c72", 8, 160, 0.4, 4);
-  if (st.thorns > 0 && src && src.hp !== undefined && src.r) hurtEnemy(src, st.thorns * dmg, { noCrit: true });
-  if (player.hp <= 0) playerDie();
+  spawnParticles(p.x, p.y, "#ff5c72", 8, 160, 0.4, 4);
+  if (st.thorns > 0 && src && src.hp !== undefined && src.r) hurtEnemy(src, st.thorns * dmg, { noCrit: true, owner: p });
+  if (p.hp <= 0) playerDie(p);
 }
-function playerDie() {
-  const st = player.st;
+function playerDie(p) {
+  const st = p.st;
   const revive = (label) => {
-    player.hp = Math.round(player.maxHp * 0.55);
-    player.invuln = 2.4; player.shield = Math.round(st.shieldMax);
-    ring(player.x, player.y, 120 * V.scale, "#ffd479", 0.7);
-    ring(player.x, player.y, 70 * V.scale, "#ffffff", 0.5);
-    spawnParticles(player.x, player.y, "#ffd479", 26, 320, 0.8, 6, true);
+    p.hp = Math.round(p.maxHp * 0.55);
+    p.invuln = 2.4; p.shield = Math.round(st.shieldMax);
+    ring(p.x, p.y, 120 * V.scale, "#ffd479", 0.7);
+    ring(p.x, p.y, 70 * V.scale, "#ffffff", 0.5);
+    spawnParticles(p.x, p.y, "#ffd479", 26, 320, 0.8, 6, true);
     toast(label); Sfx.levelup(); haptic(40);
   };
-  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ 凤凰之心 · 复活！"); return; }
-  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); return; }
-  player.alive = false;
+  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ " + p.color.name + " 凤凰之心 · 复活！"); return; }
+  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ " + p.color.name + " 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); return; }
+  p.alive = false;
+  p.hp = 0;
   Sfx.die(); haptic([40, 60, 40]);
   G.shake = 14;
-  spawnParticles(player.x, player.y, "#9fe870", 30, 300, 0.9, 6, true);
+  spawnParticles(p.x, p.y, p.color.body1, 30, 300, 0.9, 6, true);
+  const others = players.filter((o) => o !== p && o.alive && !o.down);
+  if (others.length > 0) {
+    // 双人：一人倒下，另一人继续；清空当前房间后队友原地复活
+    p.down = true;
+    toast("💀 " + p.color.name + " 倒下！清空房间后复活", 2200);
+    return;
+  }
   G.state = "dead";
   setTimeout(() => { if (G.endless) endlessGameOver(); else showDefeat(false); }, 900);
 }
-function gainExp(v) {
-  player.exp = (player.exp || 0) + v;
-  while (player.exp >= expNeed(player.level)) {
-    player.exp -= expNeed(player.level);
-    player.level++;
-    G.pendingLevelUps = (G.pendingLevelUps || 0) + 1;
+function gainExp(p, v) {
+  p.exp = (p.exp || 0) + v;
+  while (p.exp >= expNeed(p.level)) {
+    p.exp -= expNeed(p.level);
+    p.level++;
+    p.pendingLv = (p.pendingLv || 0) + 1;
   }
-  if (G.pendingLevelUps > 0 && G.state === "playing") openLevelUp();
+  queueLevelUps();
+}
+function queueLevelUps() {
+  if (G.state !== "playing" && G.state !== "levelup") return;
+  if (G.state === "playing" && players.some((p) => p.pendingLv > 0 && p.alive && !p.down)) openLevelUp();
 }
 function expNeed(lv) { return Math.round(6 + lv * 3.1 + lv * lv * 0.14); }
+function nearestPlayer(x, y, aliveOnly) {
+  let best = null, bd = Infinity;
+  for (const p of players) {
+    if (aliveOnly !== false && !p.alive) continue;
+    if (p.down && aliveOnly !== false) continue;
+    const d = dist2({ x: x, y: y }, p);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best || players[0];
+}
 
 /* ======================= 欧几里得工具 ======================= */
 function nearestEnemy(x, y, filter) {
@@ -818,54 +936,56 @@ function forEachEnemyInRange(x, y, r, fn) {
 }
 
 /* ======================= 玩家更新 ======================= */
-function updatePlayer(dt) {
-  const st = player.st;
-  const d = Input.dir();
-  const sp = speedOf();
-  if (player.dashT > 0) {
-    player.dashT -= dt;
-    player.x += player.dashDir.x * sp * 3.1 * dt;
-    player.y += player.dashDir.y * sp * 3.1 * dt;
-    if (Math.random() < 0.7) parts.push({ x: player.x, y: player.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.3, max: 0.3, color: "#9fdcff", size: 5 * V.scale, glow: true });
+function updatePlayer(p, dt) {
+  if (!p.alive) return;
+  const st = p.st;
+  const d = Input.dir(p.idx);
+  const sp = speedOf(p);
+  if (p.dashT > 0) {
+    p.dashT -= dt;
+    p.x += p.dashDir.x * sp * 3.1 * dt;
+    p.y += p.dashDir.y * sp * 3.1 * dt;
+    if (Math.random() < 0.7) parts.push({ x: p.x, y: p.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.3, max: 0.3, color: p.idx === 1 ? "#bfe6ff" : "#9fdcff", size: 5 * V.scale, glow: true });
   } else {
-    player.x += d.x * sp * d.m * dt;
-    player.y += d.y * sp * d.m * dt;
-    if (d.m > 0.05) player.walk += dt * 10; else player.walk *= 0.9;
+    p.x += d.x * sp * d.m * dt;
+    p.y += d.y * sp * d.m * dt;
+    if (d.m > 0.05) p.walk += dt * 10; else p.walk *= 0.9;
   }
   // 击退
-  player.x += player.kx * dt; player.y += player.ky * dt;
-  player.kx *= Math.pow(0.0015, dt); player.ky *= Math.pow(0.0015, dt);
+  p.x += p.kx * dt; p.y += p.ky * dt;
+  p.kx *= Math.pow(0.0015, dt); p.ky *= Math.pow(0.0015, dt);
   const b = BOUND();
-  player.x = clamp(player.x, b.l + player.r, b.r - player.r);
-  player.y = clamp(player.y, b.t + player.r, b.b - player.r);
-  if (player.invuln > 0) player.invuln -= dt;
-  if (player.hitFlash > 0) player.hitFlash -= dt;
-  if (player.dashCd > 0) player.dashCd -= dt;
+  p.x = clamp(p.x, b.l + p.r, b.r - p.r);
+  p.y = clamp(p.y, b.t + p.r, b.b - p.r);
+  if (p.invuln > 0) p.invuln -= dt;
+  if (p.hitFlash > 0) p.hitFlash -= dt;
+  if (p.dashCd > 0) p.dashCd -= dt;
+  if (p.down) return;
   // 自动射击
-  const tgt = nearestEnemy(player.x, player.y);
-  if (d.m > 0.05) player.face = Math.atan2(d.y, d.x);
-  player.shootT -= dt;
-  if (tgt && player.shootT <= 0) {
-    if (d.m <= 0.05) player.face = Math.atan2(tgt.y - player.y, tgt.x - player.x);
-    player.shootT = 1 / aspdOf();
-    doShoot(tgt);
+  const tgt = nearestEnemy(p.x, p.y);
+  if (d.m > 0.05) p.face = Math.atan2(d.y, d.x);
+  p.shootT -= dt;
+  if (tgt && p.shootT <= 0) {
+    if (d.m <= 0.05) p.face = Math.atan2(tgt.y - p.y, tgt.x - p.x);
+    p.shootT = 1 / aspdOf(p);
+    doShoot(p, tgt);
   }
-  if (!tgt) player.shootT = Math.min(player.shootT, 0.08);
+  if (!tgt) p.shootT = Math.min(p.shootT, 0.08);
   // 环绕精灵
   if (st.orbit > 0) {
-    player.orbitA += dt * 2.6;
+    p.orbitA += dt * 2.6;
     const n = st.orbit, R = 62 * V.scale;
     for (let i = 0; i < n; i++) {
-      const a = player.orbitA + (i / n) * TAU;
-      const ox = player.x + Math.cos(a) * R, oy = player.y + Math.sin(a) * R;
+      const a = p.orbitA + (i / n) * TAU;
+      const ox = p.x + Math.cos(a) * R, oy = p.y + Math.sin(a) * R;
       for (const e of enemies) {
         if (e.dead) continue;
         if (dist({ x: ox, y: oy }, e) < e.r + 10 * V.scale) {
           const key = e.type + "_" + (e.boss ? "b" : "n");
-          const last = player.orbitHit[key] || 0;
+          const last = p.orbitHit[key] || 0;
           if (G.time - last > 0.35) {
-            player.orbitHit[key] = G.time;
-            hurtEnemy(e, atkOf() * 0.55, {});
+            p.orbitHit[key] = G.time;
+            hurtEnemy(e, atkOf(p) * 0.55, { owner: p });
           }
         }
       }
@@ -873,76 +993,76 @@ function updatePlayer(dt) {
   }
   // 环绕箭雨
   if (st.spiral > 0) {
-    player.spiralT -= dt;
-    if (player.spiralT <= 0) {
-      player.spiralT = 4.5;
+    p.spiralT -= dt;
+    if (p.spiralT <= 0) {
+      p.spiralT = 4.5;
       const n = 8 + st.spiral * 2;
-      for (let i = 0; i < n; i++) spawnArrow((i / n) * TAU, { dmgMul: 0.6, speed: 520 });
-      ring(player.x, player.y, 46 * V.scale, "#c9a2ff", 0.3);
+      for (let i = 0; i < n; i++) spawnArrow(p, (i / n) * TAU, { dmgMul: 0.6, speed: 520 });
+      ring(p.x, p.y, 46 * V.scale, "#c9a2ff", 0.3);
     }
   }
   // 天雷
   if (st.thunder > 0) {
-    player.thunderT -= dt;
-    if (player.thunderT <= 0) {
-      player.thunderT = 3;
+    p.thunderT -= dt;
+    if (p.thunderT <= 0) {
+      p.thunderT = 3;
       for (let i = 0; i < st.thunder; i++) {
-        const e = nearestEnemy(player.x, player.y, (en) => !en.__struck);
         const list = enemies.filter((en) => !en.dead && !en.__struck);
         const t = list.length ? pick(list) : null;
         if (!t) break;
         t.__struck = true;
         lightningBolt(t.x, BOUND().t - 10, t.x, t.y, "#bfe8ff");
         ring(t.x, t.y, 44 * V.scale, "#bfe8ff", 0.3);
-        hurtEnemy(t, atkOf() * 1.1, { noCrit: false });
+        hurtEnemy(t, atkOf(p) * 1.1, { owner: p });
         spawnParticles(t.x, t.y, "#dff2ff", 8, 200, 0.4, 4, true);
       }
       enemies.forEach((en) => (en.__struck = false));
     }
   }
   // 生命回复
-  if (st.regen > 0 && player.hp < player.maxHp) {
-    player.regenAcc = (player.regenAcc || 0) + st.regen * dt;
-    if (player.regenAcc >= 1) { const v = Math.floor(player.regenAcc); player.regenAcc -= v; healPlayer(v, false); }
+  if (st.regen > 0 && p.hp < p.maxHp) {
+    p.regenAcc = (p.regenAcc || 0) + st.regen * dt;
+    if (p.regenAcc >= 1) { const v = Math.floor(p.regenAcc); p.regenAcc -= v; healPlayer(p, v, false); }
   }
 }
-function doShoot(tgt) {
-  const st = player.st;
-  const ang = st.arrows > 1 || true ? Math.atan2(tgt.y - player.y, tgt.x - player.x) : player.face;
+function doShoot(p, tgt) {
+  const st = p.st;
+  const ang = Math.atan2(tgt.y - p.y, tgt.x - p.x);
   const w = WEAPONS[G.weapon] || WEAPONS.bow;
   const n = st.arrows;
-  const step = 0.14 + (w.spread ? 0 : 0);
+  const step = 0.14;
   for (let i = 0; i < n; i++) {
     const off = n === 1 ? (w.spread ? rand(-w.spread, w.spread) : 0) : (i - (n - 1) / 2) * step;
-    spawnArrow(ang + off, {});
+    spawnArrow(p, ang + off, {});
   }
   for (let i = 0; i < st.side; i++) {
     const off = (i + 1) * 0.42;
-    spawnArrow(ang + off, { dmgMul: 0.85 });
-    spawnArrow(ang - off, { dmgMul: 0.85 });
+    spawnArrow(p, ang + off, { dmgMul: 0.85 });
+    spawnArrow(p, ang - off, { dmgMul: 0.85 });
   }
-  for (let i = 0; i < st.rear; i++) spawnArrow(ang + Math.PI, { dmgMul: 0.8 });
+  for (let i = 0; i < st.rear; i++) spawnArrow(p, ang + Math.PI, { dmgMul: 0.8 });
   Sfx.shoot();
-  spawnParticles(player.x + Math.cos(ang) * 14, player.y + Math.sin(ang) * 14, "#ffe9a8", 2, 70, 0.2, 2.5);
+  spawnParticles(p.x + Math.cos(ang) * 14, p.y + Math.sin(ang) * 14, p.idx === 1 ? "#bfe6ff" : "#ffe9a8", 2, 70, 0.2, 2.5);
 }
-function doDash() {
-  if (G.state !== "playing" || !player || !player.alive) return;
-  if (player.st.dash <= 0) return;
-  if (player.dashCd > 0) return;
-  const d = Input.dir();
+function doDash(idx) {
+  const p = players[idx || 0];
+  if (!p || G.state !== "playing" || !p.alive || p.down) return;
+  if (p.st.dash <= 0) return;
+  if (p.dashCd > 0) return;
+  const d = Input.dir(p.idx);
   let dx = d.x, dy = d.y;
-  if (d.m < 0.05) { dx = Math.cos(player.face); dy = Math.sin(player.face); }
-  player.dashDir = { x: dx, y: dy };
-  player.dashT = 0.2; player.dashCd = 1.5;
+  if (d.m < 0.05) { dx = Math.cos(p.face); dy = Math.sin(p.face); }
+  p.dashDir = { x: dx, y: dy };
+  p.dashT = 0.2; p.dashCd = 1.5;
   Sfx.dash(); haptic(18);
-  ring(player.x, player.y, 42 * V.scale, "#9fdcff", 0.3);
+  ring(p.x, p.y, 42 * V.scale, p.idx === 1 ? "#8fd0ff" : "#9fdcff", 0.3);
 }
 
 /* ======================= 箭矢更新 ======================= */
 function updateArrows(dt) {
-  const st = player.st;
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
+    const st = a.owner && a.owner.st ? a.owner.st : players[0].st;
     if (a.homing > 0) {
       const t = nearestEnemy(a.x, a.y, (e) => a.hit.indexOf(e) < 0);
       if (t) {
@@ -963,8 +1083,8 @@ function updateArrows(dt) {
       if (e.dead || a.hit.indexOf(e) >= 0) continue;
       if (dist(a, e) < e.r + a.r + 2) {
         a.hit.push(e);
-        hurtEnemy(e, a.dmg, {});
-        if (st.boom > 0) explodeAt(a.x, a.y, 30 * V.scale + st.boom * 12 * V.scale, a.dmg * (0.45 + 0.15 * st.boom));
+        hurtEnemy(e, a.dmg, { owner: a.owner });
+        if (st.boom > 0) explodeAt(a.x, a.y, 30 * V.scale + st.boom * 12 * V.scale, a.dmg * (0.45 + 0.15 * st.boom), a.owner);
         if (st.bolt > 0) {
           let src = e, jumped = 0, used = [e];
           while (jumped < st.bolt) {
@@ -972,7 +1092,7 @@ function updateArrows(dt) {
             for (const o of enemies) { if (o.dead || used.indexOf(o) >= 0) continue; const dd = dist(src, o); if (dd < nd) { nd = dd; nx = o; } }
             if (!nx) break;
             lightningBolt(src.x, src.y, nx.x, nx.y, "#9fdcff");
-            hurtEnemy(nx, a.dmg * 0.6, { noCrit: true });
+            hurtEnemy(nx, a.dmg * 0.6, { noCrit: true, owner: a.owner });
             used.push(nx); src = nx; jumped++;
           }
         }
@@ -980,6 +1100,7 @@ function updateArrows(dt) {
           for (let k = 0; k < 2; k++) {
             const na = a.ang + (k === 0 ? 0.7 : -0.7);
             arrows.push({
+              owner: a.owner,
               x: a.x, y: a.y, vx: Math.cos(na) * 460, vy: Math.sin(na) * 460, ang: na, dmg: a.dmg * 0.45,
               r: a.r * 0.7, len: a.len * 0.7, life: 0.5, pierce: 0, bounce: 0, homing: 0, hit: [], mini: true, color: "#ffe08a"
             });
@@ -1003,16 +1124,15 @@ function updateArrows(dt) {
     if (removed) continue;
   }
 }
-function explodeAt(x, y, r, dmg) {
+function explodeAt(x, y, r, dmg, owner) {
   ring(x, y, r, "#ffb04d", 0.32);
   spawnParticles(x, y, "#ffb04d", 8, 200, 0.4, 4, true);
   Sfx.noise(0.18, 0.22, 300);
-  forEachEnemyInRange(x, y, r, (e) => hurtEnemy(e, dmg, { noCrit: true }));
+  forEachEnemyInRange(x, y, r, (e) => hurtEnemy(e, dmg, { noCrit: true, owner: owner }));
 }
 
 /* ======================= 敌人更新 ======================= */
 function updateEnemies(dt) {
-  const st = player.st;
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e.dead) { enemies.splice(i, 1); continue; }
@@ -1022,11 +1142,14 @@ function updateEnemies(dt) {
       if (e.burnT <= 0) { e.burnT = 0.5; hurtEnemySilent(e, e.burnSrc * 0.5); }
     }
     if (e.slow > 0) e.slow -= dt;
+    // 目标：最近的存活玩家（双人时两边都会被追）
+    const tgtP = nearestPlayer(e.x, e.y) || players[0];
+    const st = tgtP.st;
     let spd = e.speed * (e.slow > 0 ? 0.55 : 1) * dt;
-    if (st.slowmo > 0 && dist(e, player) < 150 * V.scale) spd *= 1 - 0.28 * st.slowmo;
+    if (st.slowmo > 0 && dist(e, tgtP) < 150 * V.scale) spd *= 1 - 0.28 * st.slowmo;
     e.anim += dt;
-    const ang = Math.atan2(player.y - e.y, player.x - e.x);
-    const dd = dist(e, player);
+    const ang = Math.atan2(tgtP.y - e.y, tgtP.x - e.x);
+    const dd = dist(e, tgtP);
 
     switch (e.ai) {
       case "chase":
@@ -1100,7 +1223,7 @@ function updateEnemies(dt) {
         if (e.chargeState === 0) {
           e.x += Math.cos(ang) * spd * 1.15;
           e.y += Math.sin(ang) * spd * 1.15;
-          if (dd < e.r + player.r + 46 * V.scale) { e.chargeState = 1; e.chargeT = 0.55; }
+          if (dd < e.r + tgtP.r + 46 * V.scale) { e.chargeState = 1; e.chargeT = 0.55; }
         } else {
           // 引信：给自己 0.55 秒逃跑窗口，而不是贴脸瞬间爆炸
           e.chargeT -= dt;
@@ -1139,12 +1262,15 @@ function updateEnemies(dt) {
     const b = BOUND();
     e.x = clamp(e.x, b.l + e.r * 0.5, b.r - e.r * 0.5);
     e.y = clamp(e.y, b.t + e.r * 0.5, b.b - e.r * 0.5);
-    // 接触伤害
-    if (dd < e.r + player.r) {
-      if (e.ai === "boss") {
-        if (!e.bossHitT || G.time - e.bossHitT > 1.0) { e.bossHitT = G.time; hurtPlayer(e.dmg * 0.6, e); }
-      } else if (e.ai !== "bomber") {
-        if (!e.touchT || G.time - e.touchT > 1.0) { e.touchT = G.time; hurtPlayer(e.dmg * 0.65, e); }
+    // 接触伤害（对每个贴到的玩家分别判定）
+    for (const tp of players) {
+      if (!tp.alive || tp.down) continue;
+      if (dist(e, tp) < e.r + tp.r) {
+        if (e.ai === "boss") {
+          if (!e.bossHitT || G.time - e.bossHitT > 1.0) { e.bossHitT = G.time; hurtPlayer(tp, e.dmg * 0.6, e); }
+        } else if (e.ai !== "bomber") {
+          if (!e.touchT || G.time - e.touchT > 1.0) { e.touchT = G.time; hurtPlayer(tp, e.dmg * 0.65, e); }
+        }
       }
     }
   }
@@ -1160,7 +1286,7 @@ function explodeEnemy(e, r, dmg) {
   spawnParticles(e.x, e.y, "#ff8a3d", 14, 260, 0.5, 5, true);
   Sfx.noise(0.3, 0.3, 200);
   G.shake = Math.max(G.shake, 6);
-  if (dist(e, player) < r) hurtPlayer(dmg, e);
+  for (const tp of players) if (tp.alive && !tp.down && dist(e, tp) < r) hurtPlayer(tp, dmg, e);
 }
 function enemyShoot(e, ang, n, spread, radial) {
   n = n || 1; spread = spread === undefined ? 0.08 : spread;
@@ -1204,7 +1330,11 @@ function updateBoss(e, dt, ang, dd, spd) {
         break;
       }
       case "aimed": {
-        for (let k = 0; k < 2 + e.phase; k++) setTimeout(() => { if (!e.dead && G.state === "playing") enemyShoot(e, Math.atan2(player.y - e.y, player.x - e.x), 5, 0.18); }, k * 190);
+        for (let k = 0; k < 2 + e.phase; k++) setTimeout(() => {
+          if (e.dead || G.state !== "playing") return;
+          const t = nearestPlayer(e.x, e.y) || players[0];
+          enemyShoot(e, Math.atan2(t.y - e.y, t.x - e.x), 5, 0.18);
+        }, k * 190);
         break;
       }
       case "sweep": {
@@ -1217,7 +1347,7 @@ function updateBoss(e, dt, ang, dd, spd) {
         const n = 2 + e.phase;
         for (let k = 0; k < n; k++) {
           if (enemies.length >= MAX_ENEMIES) break;
-          spawnEnemy(pick(pool), { x: e.x + rand(-90, 90), y: e.y + rand(-60, 60), tier: e.tier, hpMul: 0.75 });
+          spawnEnemy(Lpick(pool), { x: e.x + Lrand(-90, 90), y: e.y + Lrand(-60, 60), tier: e.tier, hpMul: 0.75 });
         }
         ring(e.x, e.y, 100 * V.scale, "#ffffff", 0.4);
         break;
@@ -1236,7 +1366,8 @@ function updateEBullets(dt) {
   for (let i = ebullets.length - 1; i >= 0; i--) {
     const b = ebullets[i];
     if (b.homing > 0) {
-      const want = Math.atan2(player.y - b.y, player.x - b.x);
+      const th = nearestPlayer(b.x, b.y) || players[0];
+      const want = Math.atan2(th.y - b.y, th.x - b.x);
       const cur = Math.atan2(b.vy, b.vx);
       let diff = ((want - cur + Math.PI * 3) % TAU) - Math.PI;
       const na = cur + clamp(diff, -1.8 * dt, 1.8 * dt);
@@ -1246,27 +1377,39 @@ function updateEBullets(dt) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
     const bd = BOUND();
     if (b.life <= 0 || b.x < bd.l - 40 || b.x > bd.r + 40 || b.y < bd.t - 40 || b.y > bd.b + 40) { ebullets.splice(i, 1); continue; }
-    if (dist(b, player) < player.r + b.r) {
-      hurtPlayer(b.dmg, null);
-      spawnParticles(b.x, b.y, b.color, 5, 120, 0.3, 3);
-      ebullets.splice(i, 1);
+    let hit = false;
+    for (const tp of players) {
+      if (!tp.alive || tp.down || tp.invuln > 0 || tp.dashT > 0) continue;
+      if (dist(b, tp) < tp.r + b.r) {
+        hurtPlayer(tp, b.dmg, null);
+        spawnParticles(b.x, b.y, b.color, 5, 120, 0.3, 3);
+        hit = true; break;
+      }
     }
+    if (hit) ebullets.splice(i, 1);
   }
 }
 
 /* ======================= 掉落 / 粒子 / 特效 ======================= */
 function updatePickups(dt) {
-  const R = pickupRange() * V.scale;
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     p.t += dt; p.life -= dt;
-    const d = dist(p, player);
-    if (d < R) { const a = Math.atan2(player.y - p.y, player.x - p.x); const pull = 420; p.vx += Math.cos(a) * pull * dt; p.vy += Math.sin(a) * pull * dt; }
+    // 吸引：取距离最近、且拾取范围内最远的那个玩家
+    let owner = null, bd = Infinity, R = 0;
+    for (const pl of players) {
+      if (!pl.alive || pl.down) continue;
+      const d = dist(p, pl);
+      if (d < bd) { bd = d; owner = pl; R = pickupRange(pl) * V.scale; }
+    }
+    if (!owner) owner = players[0];
+    const d = bd === Infinity ? dist(p, owner) : bd;
+    if (d < R) { const a = Math.atan2(owner.y - p.y, owner.x - p.x); const pull = 420; p.vx += Math.cos(a) * pull * dt; p.vy += Math.sin(a) * pull * dt; }
     p.x += p.vx * dt; p.y += p.vy * dt;
     p.vx *= Math.pow(0.02, dt); p.vy *= Math.pow(0.02, dt);
-    if (d < player.r + p.r + 4) {
+    if (d < owner.r + p.r + 4) {
       if (p.type === "coin") { G.runCoins += p.value; save.coins += p.value; persist(); Sfx.coin(); }
-      else { healPlayer(12, true); Sfx.pick(); }
+      else { healPlayer(owner, 12, true); Sfx.pick(); }
       pickups.splice(i, 1); continue;
     }
     if (p.life <= 0) pickups.splice(i, 1);
@@ -1291,28 +1434,41 @@ function updateParts(dt) {
   }
 }
 /* ======================= 开局 / 房间流程 ======================= */
-function startRun(chapter, level, endless) {
+function startRun(chapter, level, endless, opts) {
+  opts = opts || {};
   G.chapter = chapter; G.level = level; G.endless = !!endless; G.endlessWave = endless ? 1 : 0;
   G.weapon = save.weapon;
-  RUN.skills = {}; RUN.kills = 0; RUN.revived = false;
+  G.twoP = !!opts.twoP;
+  G.challenge = opts.challenge || null;
+  setLayoutSeed(G.challenge ? G.challenge.seed : null);
+  RUN.kills = 0; RUN.revived = false;
   G.runCoins = 0; G.runKills = 0; G.runTime = 0;
-  G.pendingLevelUps = 0;
-  player = createPlayer();
-  player.level = 1; player.exp = 0;
-  refreshStats(false);
-  player.hp = player.maxHp;
+  G.pendingLevelUps = 0; G.lvQueue = [];
+  const n = G.twoP ? 2 : 1;
+  players = [];
+  for (let i = 0; i < n; i++) {
+    const p = createPlayer(i);
+    refreshStats(p, false);
+    p.hp = p.maxHp;
+    players.push(p);
+  }
   G.revivesLeft = save.perm.revive;
   arrows = []; ebullets = []; enemies = []; pickups = []; parts = []; floats = []; effects = [];
   G.rooms = endless ? buildEndlessRooms(1) : buildLevel(chapter, level);
   G.room = 0;
   G.state = "playing";
   bossIntro = null;
+  Input.endAll();
   loadRoom();
   hideOverlay();
   el.hud.classList.remove("hidden");
-  el.btnDash.classList.toggle("hidden", player.st.dash <= 0);
+  el.hud.classList.toggle("two-p", G.twoP);
+  el.p2hud.classList.toggle("hidden", !G.twoP);
+  el.skillBar2.classList.toggle("hidden", !G.twoP);
+  el.btnDash.classList.toggle("hidden", players[0].st.dash <= 0);
+  el.btnDash2.classList.toggle("hidden", !(G.twoP && players[1].st.dash > 0));
   layoutSkillBar(); layoutHud();
-  toast((endless ? "无尽模式 · 第 1 波" : chapterName(chapter) + " " + chapter + "-" + level), 1500);
+  toast((G.challenge ? "⚔ 好友挑战 · " + (G.challenge.name || "好友") : endless ? "无尽模式 · 第 1 波" : chapterName(chapter) + " " + chapter + "-" + level), 1500);
 }
 function chapterName(ch) { const c = CHAPTERS[(ch - 1) % CHAPTERS.length]; return c ? c.name : "深渊"; }
 function roomTier() {
@@ -1321,13 +1477,18 @@ function roomTier() {
 function loadRoom() {
   enemies.length = 0; ebullets.length = 0; arrows.length = 0; pickups.length = 0;
   G.waveIdx = 0; G.waveDelay = 0; G.roomClear = false; G.roomClearTimer = 0;
+  G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0;
   const r = G.rooms[G.room];
-  const st = player.st;
-  if (st.shieldMax > 0) player.shield = st.shieldMax;
   const b = BOUND();
-  player.x = clamp(V.w / 2, b.l + 30, b.r - 30);
-  player.y = clamp(V.h * 0.72, b.t + 30, b.b - 30);
-  player.invuln = 1.0;
+  players.forEach((p, i) => {
+    // 队友复活：清空房间后原地满血一半复活
+    if (p.down) { p.down = false; p.alive = true; p.hp = Math.round(p.maxHp * 0.5); p.invuln = 2.0; toast("🩹 " + p.color.name + " 重新加入战斗！", 1200); }
+    if (p.st.shieldMax > 0) p.shield = p.st.shieldMax;
+    p.x = clamp(V.w * (G.twoP ? (i === 0 ? 0.36 : 0.64) : 0.5), b.l + 30, b.r - 30);
+    p.y = clamp(V.h * 0.72, b.t + 30, b.b - 30);
+    p.invuln = Math.max(p.invuln, 1.0);
+    p.kx = p.ky = 0;
+  });
   if (r.boss) {
     spawnBoss(r.boss, roomTier());
   } else {
@@ -1357,6 +1518,19 @@ function updateRoomText() {
   el.stageTxt.textContent = G.endless ? "无尽 · 第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level;
 }
 function checkRoomFlow(dt) {
+  // 防拖沓/防卡死：房间内长时间无击杀，剩余敌人逐渐狂暴（也惩罚纯风筝打法）
+  if (!G.roomClear && enemies.length > 0) {
+    G.roomTimer = (G.roomTimer || 0) + dt;
+    G.noKillT = (G.noKillT || 0) + dt;
+    const want = Math.min(1, Math.floor(G.noKillT / 12));   // 每 12 秒一档，最多 4 档
+    if (want > (G.rageLv || 0)) {
+      G.rageLv = want;
+      for (const e of enemies) { e.speed *= 1.22; e.dmg *= 1.08; }
+      if (want === 1) { toast("⚠️ 敌人开始狂暴！", 1400); Sfx.boss(); }
+    }
+  } else {
+    G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0;
+  }
   if (G.roomClear) {
     G.roomClearTimer -= dt;
     if (G.roomClearTimer <= 0) nextRoom();
@@ -1373,14 +1547,19 @@ function checkRoomFlow(dt) {
     // 房间清空
     G.roomClear = true;
     const tier = roomTier();
-    const reward = Math.round((12 + tier * 2.2) * (r.kind === "elite" ? 2.2 : 1) * (r.boss ? 3.2 : 1));
+    const reward = Math.round((12 + tier * 2.2) * (r.kind === "elite" ? 2.2 : 1) * (r.boss ? 3.2 : 1) * (G.twoP ? 1.4 : 1));
     G.runCoins += reward; save.coins += reward; persist(true);
-    player.shield = player.st.shieldMax;
-    // 房间清空回血，缓解跨房间消耗
-    if (player.hp < player.maxHp) healPlayer(Math.round(player.maxHp * 0.08), false);
+    for (const p of players) {
+      if (!p.alive || p.down) continue;
+      p.shield = p.st.shieldMax;
+      if (p.hp < p.maxHp) healPlayer(p, Math.round(p.maxHp * 0.08), false);
+    }
     Sfx.clear();
     toast("房间清空！ +" + reward + " 🪙", 1200);
-    if (Math.random() < 0.35) dropPickup(player.x + rand(-40, 40), player.y + rand(-40, 40), "heart", 1);
+    if (Math.random() < 0.35) {
+      const p = players[0];
+      dropPickup(p.x + rand(-40, 40), p.y + rand(-40, 40), "heart", 1);
+    }
     G.roomClearTimer = 1.15;
   }
 }
@@ -1389,7 +1568,7 @@ function nextRoom() {
     G.endlessWave++;
     G.rooms = buildEndlessRooms(G.endlessWave);
     G.room = 0;
-    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.18);
+    for (const p of players) if (p.alive && !p.down) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.18);
     toast("第 " + G.endlessWave + " 波", 1300);
     loadRoom();
     return;
@@ -1432,32 +1611,49 @@ function endlessGameOver() {
 
 /* ======================= HUD ======================= */
 let skillBarSig = "";
-function layoutSkillBar() {
-  if (!player) return;
-  const ids = Object.keys(RUN.skills);
-  const sig = ids.map((i) => i + RUN.skills[i]).join(",") + "|" + (player.st.dash > 0);
-  if (sig === skillBarSig) return;
-  skillBarSig = sig;
-  let html = "";
+function skillBarHtml(p) {
+  const ids = Object.keys(p.skills);
   ids.sort((a, b) => (SKILL_MAP[a] ? SKILL_MAP[a].r : 0) - (SKILL_MAP[b] ? SKILL_MAP[b].r : 0));
+  let html = "";
   for (const id of ids) {
     const sk = SKILL_MAP[id]; if (!sk) continue;
-    html += '<div class="skchip">' + sk.icon + (RUN.skills[id] > 1 ? "<b>" + RUN.skills[id] + "</b>" : "") + "</div>";
+    html += '<div class="skchip' + (p.idx === 1 ? " p2" : "") + '">' + sk.icon + (p.skills[id] > 1 ? "<b>" + p.skills[id] + "</b>" : "") + "</div>";
   }
-  el.skillBar.innerHTML = html;
-  el.btnDash.classList.toggle("hidden", !(player.st.dash > 0));
+  if (p.down) html = '<div class="skchip">💀</div>' + html;
+  return html;
+}
+function layoutSkillBar() {
+  if (!players.length) return;
+  const sig = players.map((p) => Object.keys(p.skills).map((i) => i + p.skills[i]).join(",") + "|" + p.st.dash + "|" + p.down).join("//");
+  if (sig === skillBarSig) return;
+  skillBarSig = sig;
+  el.skillBar.innerHTML = skillBarHtml(players[0]);
+  if (G.twoP && players[1]) el.skillBar2.innerHTML = skillBarHtml(players[1]);
+  el.btnDash.classList.toggle("hidden", !(players[0] && players[0].st.dash > 0));
+  el.btnDash2.classList.toggle("hidden", !(G.twoP && players[1] && players[1].st.dash > 0));
 }
 function layoutHud() { }
+function paintBar(fillEl, shEl, txtEl, lvEl, p, tag) {
+  const mx = p.maxHp || 1;
+  const hp = Math.max(0, p.hp);
+  fillEl.style.width = (hp / mx * 100).toFixed(1) + "%";
+  shEl.style.width = Math.min(100, (p.shield / mx) * 100).toFixed(1) + "%";
+  let txt = Math.ceil(hp) + " / " + mx + (p.shield > 0 ? "  🛡" + Math.ceil(p.shield) : "");
+  if (p.down) txt = "💀 倒下 · 通关房间后复活";
+  txtEl.textContent = txt;
+  lvEl.textContent = tag + " · Lv." + p.level;
+}
 function updateHud() {
-  if (!player) return;
-  const hp = Math.max(0, player.hp), mx = player.maxHp;
-  el.hpFill.style.width = (hp / mx * 100).toFixed(1) + "%";
-  el.shFill.style.width = Math.min(100, (player.shield / mx) * 100).toFixed(1) + "%";
-  el.hpTxt.textContent = Math.ceil(hp) + " / " + mx + (player.shield > 0 ? "  🛡" + Math.ceil(player.shield) : "");
-  el.xpFill.style.width = ((player.exp || 0) / expNeed(player.level) * 100).toFixed(1) + "%";
-  el.lvTag.textContent = "Lv." + player.level;
+  if (!players.length) return;
+  paintBar(el.hpFill, el.shFill, el.hpTxt, el.lvTag, players[0], "P1");
+  el.xpFill.style.width = ((players[0].exp || 0) / expNeed(players[0].level) * 100).toFixed(1) + "%";
+  if (G.twoP && players[1]) {
+    paintBar(el.hpFill2, el.shFill2, el.hpTxt2, el.lvTag2, players[1], "P2");
+    el.xpFill2.style.width = ((players[1].exp || 0) / expNeed(players[1].level) * 100).toFixed(1) + "%";
+  }
   el.coinTxt.textContent = "🪙 " + fmt(save.coins);
-  el.btnDash.classList.toggle("cd", player.dashCd > 0);
+  el.btnDash.classList.toggle("cd", players[0].dashCd > 0);
+  if (G.twoP && players[1]) el.btnDash2.classList.toggle("cd", players[1].dashCd > 0);
 }
 
 /* ======================= 主循环 ======================= */
@@ -1469,7 +1665,7 @@ function frame(now) {
   if (G.state === "playing") {
     G.time += rawDt;
     G.runTime += rawDt;
-    updatePlayer(rawDt);
+    for (const p of players) updatePlayer(p, rawDt);
     updateArrows(rawDt);
     updateEnemies(rawDt);
     updateEBullets(rawDt);
@@ -1490,7 +1686,7 @@ function frame(now) {
 function pauseGame() {
   if (G.state !== "playing") return;
   G.state = "paused";
-  Input.end();
+  Input.endAll();
   showPause();
 }
 function resumeGame() {
@@ -1500,7 +1696,8 @@ function resumeGame() {
   hideOverlay();
 }
 el.btnPause.addEventListener("click", pauseGame);
-el.btnDash.addEventListener("pointerdown", (e) => { e.preventDefault(); doDash(); });
+el.btnDash.addEventListener("pointerdown", (e) => { e.preventDefault(); doDash(0); });
+el.btnDash2.addEventListener("pointerdown", (e) => { e.preventDefault(); doDash(1); });
 /* ======================= 渲染 ======================= */
 let bgCache = { w: 0, h: 0, ch: -1, grad: null };
 function themeColors() {
@@ -1517,7 +1714,7 @@ function render() {
     drawPickups();
     drawEnemies();
     drawEBullets();
-    if (player && player.alive) drawPlayer();
+    for (const p of players) if (p.alive || p.down) drawPlayer(p);
     drawArrows();
     drawParticles();
     drawEffects();
@@ -1563,17 +1760,18 @@ function drawVignette(w, h) {
   g.addColorStop(0, "transparent");
   g.addColorStop(1, "#000000aa");
   ctx2d.fillStyle = g; ctx2d.fillRect(0, 0, w, h);
-  if (player && player.hitFlash > 0) {
-    ctx2d.fillStyle = "rgba(220,30,60," + (player.hitFlash * 0.5).toFixed(3) + ")";
+  let flash = 0;
+  for (const p of players) flash = Math.max(flash, p.hitFlash || 0);
+  if (flash > 0) {
+    ctx2d.fillStyle = "rgba(220,30,60," + (flash * 0.5).toFixed(3) + ")";
     ctx2d.fillRect(0, 0, w, h);
   }
 }
-function drawPlayer() {
-  const p = player;
+function drawPlayer(p) {
   const r = p.r;
   const flick = p.invuln > 0 && Math.floor(G.time * 18) % 2 === 0 ? 0.45 : 1;
   ctx2d.save();
-  ctx2d.globalAlpha = flick;
+  ctx2d.globalAlpha = p.down ? 0.4 : flick;
   // 影子
   ctx2d.fillStyle = "#00000055";
   ctx2d.beginPath(); ctx2d.ellipse(p.x, p.y + r * 0.85, r * 0.95, r * 0.42, 0, 0, TAU); ctx2d.fill();
@@ -1583,6 +1781,14 @@ function drawPlayer() {
     ctx2d.beginPath(); ctx2d.arc(p.x, p.y, r + 8 * V.scale, 0, TAU); ctx2d.stroke();
     ctx2d.fillStyle = "#7fd8ff22";
     ctx2d.beginPath(); ctx2d.arc(p.x, p.y, r + 8 * V.scale, 0, TAU); ctx2d.fill();
+  }
+  if (p.down) {
+    ctx2d.fillStyle = "#ffffffaa";
+    ctx2d.font = "900 " + (16 * V.scale).toFixed(0) + "px system-ui,sans-serif";
+    ctx2d.textAlign = "center"; ctx2d.textBaseline = "middle";
+    ctx2d.fillText("💀", p.x, p.y);
+    ctx2d.restore();
+    return;
   }
   // 环绕精灵
   const st = p.st;
@@ -1599,9 +1805,9 @@ function drawPlayer() {
   // 身体
   const bob = Math.sin(p.walk) * 1.6;
   const g2 = ctx2d.createRadialGradient(p.x - r * 0.3, p.y - r * 0.4 + bob, r * 0.2, p.x, p.y + bob, r * 1.25);
-  g2.addColorStop(0, "#ffffff");
-  g2.addColorStop(0.35, "#9fe870");
-  g2.addColorStop(1, "#2f7a3f");
+  g2.addColorStop(0, p.color.body0);
+  g2.addColorStop(0.35, p.color.body1);
+  g2.addColorStop(1, p.color.body2);
   ctx2d.fillStyle = g2;
   ctx2d.beginPath(); ctx2d.arc(p.x, p.y + bob, r, 0, TAU); ctx2d.fill();
   ctx2d.strokeStyle = "#0b1a10"; ctx2d.lineWidth = 2.5; ctx2d.stroke();
@@ -1609,7 +1815,7 @@ function drawPlayer() {
   const fa = p.face;
   ctx2d.translate(p.x, p.y + bob);
   ctx2d.rotate(fa);
-  ctx2d.strokeStyle = "#f5d6a0"; ctx2d.lineWidth = 3; ctx2d.lineCap = "round";
+  ctx2d.strokeStyle = p.color.bow; ctx2d.lineWidth = 3; ctx2d.lineCap = "round";
   ctx2d.beginPath(); ctx2d.arc(r * 1.15, 0, r * 0.85, -1.05, 1.05); ctx2d.stroke();
   ctx2d.strokeStyle = "#ffffff88"; ctx2d.lineWidth = 1.2;
   ctx2d.beginPath(); ctx2d.moveTo(r * 1.15 + Math.cos(-1.05) * r * 0.85, Math.sin(-1.05) * r * 0.85);
@@ -1626,6 +1832,14 @@ function drawPlayer() {
       ctx2d.strokeStyle = "#ffffff12"; ctx2d.lineWidth = 1.5;
       ctx2d.beginPath(); ctx2d.moveTo(p.x, p.y); ctx2d.lineTo(t.x, t.y); ctx2d.stroke();
     }
+  }
+  // 双人时标注 P1 / P2，避免认错人
+  if (G.twoP) {
+    ctx2d.font = "800 " + (11 * V.scale).toFixed(0) + "px system-ui,sans-serif";
+    ctx2d.textAlign = "center"; ctx2d.textBaseline = "bottom";
+    ctx2d.fillStyle = p.color.ui;
+    ctx2d.globalAlpha = 1;
+    ctx2d.fillText(p.color.name, p.x, p.y - r - 6);
   }
 }
 function enemyShape(e) {
@@ -1685,7 +1899,8 @@ function enemyShape(e) {
     ctx2d.beginPath(); ctx2d.arc(0, 0, r * 0.82, 0, TAU); ctx2d.fill();
     if (e.chargeState === 1) {
       ctx2d.strokeStyle = "#ff4444cc"; ctx2d.lineWidth = 3;
-      const ca = Math.atan2(player.y - e.y, player.x - e.x);
+      const tp0 = nearestPlayer(e.x, e.y) || players[0];
+      const ca = Math.atan2(tp0.y - e.y, tp0.x - e.x);
       ctx2d.beginPath(); ctx2d.moveTo(0, 0); ctx2d.lineTo(Math.cos(ca) * 420 * V.scale, Math.sin(ca) * 420 * V.scale); ctx2d.stroke();
     }
   } else {
@@ -1695,7 +1910,8 @@ function enemyShape(e) {
     ctx2d.strokeStyle = "#00000055"; ctx2d.lineWidth = 2; ctx2d.stroke();
   }
   // 眼睛
-  const ea = Math.atan2(player.y - e.y, player.x - e.x);
+  const tp1 = nearestPlayer(e.x, e.y) || players[0];
+  const ea = Math.atan2(tp1.y - e.y, tp1.x - e.x);
   ctx2d.fillStyle = "#08111c";
   for (const s of [-0.42, 0.42]) {
     const ex = Math.cos(ea + s) * r * 0.34, ey = Math.sin(ea + s) * r * 0.34;
@@ -1854,18 +2070,30 @@ function showMenu() {
   G.state = "menu";
   el.hud.classList.add("hidden");
   const w = WEAPONS[save.weapon] || WEAPONS.bow;
+  const ch = pendingChallenge();
+  const challengeBanner = ch
+    ? '<div class="panel" style="border-color:#ffd479aa;text-align:center">' +
+      '<div style="font-size:13px;line-height:1.9">⚔️ 好友 <b style="color:#ffd479">' + esc(ch.name || "神秘人") + "</b> 向你发起挑战！<br>" +
+      "他在<b>无尽模式</b>打到了第 <b style='color:#ffd479;font-size:18px'>" + (ch.score | 0) + "</b> 波<br>" +
+      '<span style="color:#93a4c4;font-size:11px">同一套随机种子，公平比拼</span></div>' +
+      '<button class="btn primary" id="mAccept" style="width:100%">⚔ 接受挑战</button></div>'
+    : "";
   showOverlay(
-    '<h1 class="title">弓 箭 传 说</h1>' +
-    '<div class="subtitle">ARCHERY LEGEND · 复刻版</div>' +
+    '<h1 class="title">音 帝 庙 大 冒 险</h1>' +
+    '<div class="subtitle">YIN DI MIAO ADVENTURE</div>' +
+    challengeBanner +
     '<div class="panel" style="text-align:center">' +
     '<div style="font-size:12px;color:#c9d7f0;line-height:1.9">' +
-    '当前武器：' + w.icon + " " + w.name + "<br>" +
-    '硬币：<b style="color:#ffd479">' + coinStr() + "</b>　最高进度：" + chapterName(save.chapter) + " " + save.chapter + "-" + save.level +
+    "当前武器：" + w.icon + " " + w.name + "<br>" +
+    "硬币：<b style='color:#ffd479'>" + coinStr() + "</b>　进度：" + chapterName(save.chapter) + " " + save.chapter + "-" + save.level +
+    (save.endlessBest ? "　无尽最高：<b style='color:#ffd479'>" + save.endlessBest + " 波</b>" : "") +
     "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
     '<button class="btn primary" id="mContinue">▶ 继续闯关　' + chapterName(save.chapter) + " " + save.chapter + "-" + save.level + "</button>" +
+    '<button class="btn" id="mCoop" style="border-color:#8fd0ffaa;background:linear-gradient(180deg,#2a4a6e,#16283c);color:#eaf6ff">👥 双人同屏（和朋友一起玩）</button>' +
     '<div class="row">' +
     '<button class="btn ghost" id="mLevels">🗺 关卡选择</button>' +
+    '<button class="btn ghost" id="mChallenge">⚔ 好友挑战</button>' +
     '<button class="btn ghost" id="mShop">⚒ 强化 &amp; 武器</button>' +
     "</div>" +
     '<div class="row">' +
@@ -1874,18 +2102,22 @@ function showMenu() {
     '<button class="btn ghost small" id="mFull">⛶ 全屏</button>' +
     '<button class="btn ghost small" id="mReset">🗑 清档</button>' +
     "</div></div>" +
-    '<div class="tip">手指按住屏幕任意位置拖动 = 移动并自动射箭　·　电脑：WASD 移动、空格冲刺</div>'
+    '<div class="tip">单人：按住屏幕任意位置拖动摇杆　·　双人：左半屏 = P1、右半屏 = P2，各自摇杆互不干扰</div>'
   );
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
-  $("mLevels").onclick = showLevelSelect;
+  $("mCoop").onclick = () => showLevelSelect(true);
+  $("mLevels").onclick = () => showLevelSelect(false);
+  $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
   $("mHelp").onclick = showHelp;
+  if ($("mAccept")) $("mAccept").onclick = () => startRun(1, 1, true, { twoP: false, challenge: ch });
   $("mSound").onclick = () => { save.sound = !save.sound; persist(true); showMenu(); Sfx.resume(); };
   $("mFull").onclick = () => requestFull();
   $("mReset").onclick = () => {
     if (confirm("确定清空所有进度、硬币与强化？")) { save = defaultSave(); persist(true); showMenu(); }
   };
 }
+function esc(s) { return String(s == null ? "" : s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c])); }
 function requestFull() {
   try {
     const e = document.documentElement;
@@ -1902,13 +2134,19 @@ function showHelp() {
   showOverlay(
     '<h1 class="title" style="font-size:26px">玩法说明</h1>' +
     '<div class="panel"><div class="tip" style="text-align:left">' +
-    "<b style='color:#ffd479'>操作</b><br>· 手机：<b>按住屏幕任意位置拖动</b>出现摇杆，角色自动朝最近敌人射箭<br>" +
-    "· 电脑：<span class='kbd'>WASD</span>/<span class='kbd'>方向键</span> 移动，<span class='kbd'>空格</span> 冲刺，<span class='kbd'>P</span> 暂停<br>" +
-    "· 获得「疾影冲刺」技能后，右下角出现冲刺按钮（冲刺期间无敌）<br><br>" +
-    "<b style='color:#ffd479'>闯关</b><br>· 每个小关 3~5 个房间，清空房间即可前进；每 5 关是 <b>BOSS 房</b><br>" +
-    "· 击杀敌人获得经验，<b>升级时从 3 张卡中选 1 个技能</b>，技能可以叠加成型<br>" +
+    "<b style='color:#ffd479'>操作 · 单人</b><br>· 手机：<b>按住屏幕任意位置拖动</b>出摇杆，角色自动朝最近敌人射箭<br>" +
+    "· 电脑：<span class='kbd'>WASD</span> 移动，<span class='kbd'>空格</span> 冲刺，<span class='kbd'>P</span> 暂停<br><br>" +
+    "<b style='color:#8fd0ff'>操作 · 双人同屏</b><br>· 左半屏 = <b style='color:#9fe870'>P1</b>，右半屏 = <b style='color:#8fd0ff'>P2</b>，两根手指各拖各的摇杆<br>" +
+    "· 电脑：P1 用 <span class='kbd'>WASD</span>+<span class='kbd'>空格</span>，P2 用 <span class='kbd'>方向键</span>+<span class='kbd'>Shift</span><br>" +
+    "· 两人各自升级、各自选技能、各自有血条；一人倒下后，<b>清空当前房间即可复活</b><br>" +
+    "· 双人时敌人血量 ×1.75，配合才能走远<br><br>" +
+    "<b style='color:#ffd479'>闯关</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
+    "· 击杀敌人升级，<b>三选一技能可以叠加成型</b><br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
-    "· 通关第 3 章后解锁 <b>无尽模式</b>，无限波次挑战最高纪录<br><br>" +
+    "· 通关第 2 章解锁 <b>无尽模式</b><br><br>" +
+    "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
+    "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
+    "· 结束时自动比波数判胜负，还能一键「回敬挑战」把新纪录甩回去<br><br>" +
     "<b style='color:#ffd479'>流派提示</b><br>· 多重射击 + 穿透 + 弹射 = 箭雨清屏<br>" +
     "· 烈焰 + 寒冰 + 爆裂 = 元素爆发<br>" +
     "· 吸血 + 荆棘 + 护盾 = 近战硬抗<br>" +
@@ -1918,9 +2156,10 @@ function showHelp() {
   );
   $("hBack").onclick = showMenu;
 }
-function showLevelSelect() {
+function showLevelSelect(twoP) {
   const chs = CHAPTERS;
-  let tabs = "", grid = "", selCh = clamp(save.chapter, 1, chs.length), selLv = save.level;
+  let tabs = "", grid = "", selCh = clamp(save.chapter, 1, chs.length);
+  const coop = twoP === undefined ? G.twoP : !!twoP;
   const unlockedCh = (c) => !!save.unlocked[c];
   for (const c of chs) {
     tabs += '<div class="tab' + (c.id === selCh ? " on" : "") + '" data-ch="' + c.id + '"' + (unlockedCh(c.id) ? "" : ' style="opacity:.45"') + ">" + c.name + "</div>";
@@ -1942,34 +2181,156 @@ function showLevelSelect() {
       '<div class="pill' + (owned ? "" : " off") + '">' + (owned ? (save.weapon === id ? "使用中" : "装备") : "🪙" + w.cost) + "</div></div>";
   }).join("");
   showOverlay(
-    '<h1 class="title" style="font-size:24px">关卡选择</h1>' +
+    '<h1 class="title" style="font-size:24px">' + (coop ? "双人同屏 · 选关" : "关卡选择") + "</h1>" +
+    '<div class="row"><div class="tab' + (coop ? "" : " on") + '" id="pTog1">👤 单人</div><div class="tab' + (coop ? " on" : "") + '" id="pTog2">👥 双人同屏</div></div>' +
     '<div class="tabs">' + tabs + "</div>" +
     '<div class="panel"><div class="grid-lv">' + grid + "</div></div>" +
     '<div class="panel"><h2>武器（点击装备 / 购买）</h2><div class="list">' + wl + "</div></div>" +
     (save.endlessUnlocked ? '<button class="btn primary" id="lEndless">♾ 无尽模式（最高 ' + (save.endlessBest || 0) + " 波）</button>" : "") +
     '<div class="row"><button class="btn ghost" id="lBack">返回</button></div>' +
-    '<div class="tip">💡 关卡与金币永久保存，随时回来继续变强</div>'
+    '<div class="tip">' + (coop ? "👥 双人：一人管左半屏、一人管右半屏；一人倒下后清空房间即可复活<br>敌人血量与数量会相应提升" : "💡 关卡与金币永久保存，随时回来继续变强") + "</div>"
   );
-  overlay.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
+  $("pTog1").onclick = () => showLevelSelect(false);
+  $("pTog2").onclick = () => showLevelSelect(true);
+  overlay.querySelectorAll(".tab[data-ch]").forEach((t) => t.onclick = () => {
     selCh = +t.dataset.ch;
     if (!save.unlocked[selCh]) { toast("尚未解锁该章节"); return; }
     save.chapter = selCh; save.level = Math.max(1, Math.min(save.unlocked[selCh] || 1, CHAPTER_MAX_LEVEL));
-    persist(); showLevelSelect();
+    persist(); showLevelSelect(coop);
   });
   overlay.querySelectorAll(".lvcell").forEach((c) => c.onclick = () => {
     if (c.classList.contains("locked")) { toast("先通关前面的关卡"); return; }
     const ch = +c.dataset.ch, lv = +c.dataset.lv;
-    save.chapter = ch; save.level = lv; persist();
-    startRun(ch, lv, false);
+    save.chapter = ch; save.level = lv; persist(true);
+    startRun(ch, lv, false, { twoP: coop });
   });
   overlay.querySelectorAll("[data-w]").forEach((n) => n.onclick = () => {
     const id = n.dataset.w, w = WEAPONS[id];
-    if (save.weapons[id]) { save.weapon = id; persist(); toast("已装备 " + w.name); showLevelSelect(); }
-    else if (save.coins >= w.cost) { save.coins -= w.cost; save.weapons[id] = 1; save.weapon = id; persist(true); Sfx.levelup(); toast("购买成功！已装备 " + w.name); showLevelSelect(); }
+    if (save.weapons[id]) { save.weapon = id; persist(true); toast("已装备 " + w.name); showLevelSelect(coop); }
+    else if (save.coins >= w.cost) { save.coins -= w.cost; save.weapons[id] = 1; save.weapon = id; persist(true); Sfx.levelup(); toast("购买成功！已装备 " + w.name); showLevelSelect(coop); }
     else toast("金币不足，还差 " + (w.cost - save.coins) + " 🪙");
   });
-  if ($("lEndless")) $("lEndless").onclick = () => startRun(1, 1, true);
+  if ($("lEndless")) $("lEndless").onclick = () => startRun(1, 1, true, { twoP: coop });
   $("lBack").onclick = showMenu;
+}
+/* ---------------- 好友挑战 ---------------- */
+function makeSeed() {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 6; i++) s += A[(Math.random() * A.length) | 0];
+  return s;
+}
+function challengeUrl(seed, name, score) {
+  const base = location.origin + location.pathname;
+  return base + "?c=" + encodeURIComponent(seed) + "&n=" + encodeURIComponent(name || "") + "&s=" + (score | 0);
+}
+function pendingChallenge() {
+  try {
+    const q = new URLSearchParams(location.search);
+    const c = q.get("c");
+    if (!c) return null;
+    return { seed: c.toUpperCase().slice(0, 12), name: (q.get("n") || "").slice(0, 12), score: parseInt(q.get("s") || "0", 10) || 0 };
+  } catch (e) { return null; }
+}
+function copyText(txt, btn) {
+  const done = () => { toast("✅ 挑战链接已复制，发给朋友即可"); if (btn) btn.textContent = "✅ 已复制"; };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt, done));
+      return;
+    }
+  } catch (e) { }
+  fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+    document.execCommand("copy"); document.body.removeChild(ta); done();
+  } catch (e) { toast("复制失败，请长按选择链接"); }
+}
+function showChallenge() {
+  const best = save.endlessBest || 0;
+  const seed = makeSeed();
+  const url = challengeUrl(seed, save.playerName || "", best);
+  const list = (save.challenges || []).slice(0, 12).map((c) => {
+    const win = (c.myScore || 0) > (c.score || 0);
+    return '<div class="item"><div class="ic">' + (win ? "🏆" : "⚔️") + "</div>" +
+      "<div class='tx'><div class='nm'>" + esc(c.name || "好友") + " 的挑战</div>" +
+      "<div class='ds'>他 " + (c.score | 0) + " 波 · 我 " + (c.myScore | 0) + " 波 · " +
+      (win ? "<b style='color:#57e08a'>我赢了</b>" : (c.myScore ? "<b style='color:#ff8a8a'>我输了</b>" : "未应战")) + "</div></div>" +
+      '<div class="pill" data-re="' + esc(c.seed) + '" style="cursor:pointer">再战</div></div>';
+  }).join("");
+  showOverlay(
+    '<h1 class="title" style="font-size:24px">好友挑战</h1>' +
+    '<div class="subtitle">同一套随机种子 · 比谁走得远</div>' +
+    '<div class="panel"><h2>① 发起挑战</h2>' +
+    "<div style='font-size:12px;color:#c9d7f0;line-height:1.9;text-align:center'>" +
+    "你的纪录：无尽模式第 <b style='color:#ffd479;font-size:16px'>" + best + "</b> 波<br>" +
+    "<span style='color:#93a4c4;font-size:11px'>把链接发给朋友，他打开后会打同一套关卡</span></div>" +
+    '<input id="cName" maxlength="12" placeholder="你的昵称（可选）" value="' + esc(save.playerName || "") + '" ' +
+    'style="width:100%;margin:8px 0;padding:10px;border-radius:11px;border:1.5px solid #3a4f78;background:#0e1729;color:#e9f0ff;font-size:14px;text-align:center">' +
+    '<div class="row"><button class="btn primary" id="cCopy">📤 复制挑战链接</button>' +
+    '<button class="btn ghost" id="cShare">📲 分享</button></div>' +
+    '<div style="font-size:10px;color:#7f90ad;word-break:break-all;text-align:center;margin-top:6px">' + esc(url) + "</div></div>" +
+    '<div class="panel"><h2>② 接受好友的挑战</h2>' +
+    '<input id="cPaste" placeholder="粘贴好友发来的挑战链接" ' +
+    'style="width:100%;margin:6px 0;padding:10px;border-radius:11px;border:1.5px solid #3a4f78;background:#0e1729;color:#e9f0ff;font-size:13px">' +
+    '<button class="btn primary" id="cGo" style="width:100%">⚔ 开始挑战</button></div>' +
+    (list ? '<div class="panel"><h2>③ 挑战记录</h2><div class="list">' + list + "</div></div>" : "") +
+    '<div class="row"><button class="btn ghost" id="cBack">返回</button></div>' +
+    '<div class="tip">两人使用同一颗随机种子，敌人种类、数量与出场位置完全一致，公平比波数</div>'
+  );
+  const nameInput = $("cName");
+  const upd = () => {
+    save.playerName = nameInput.value.trim().slice(0, 12);
+    persist(true);
+    const u = challengeUrl(seed, save.playerName, best);
+    $("cCopy").onclick = () => copyText(u, $("cCopy"));
+    $("cShare").onclick = () => doShare(u);
+  };
+  nameInput.oninput = upd;
+  upd();
+  $("cShare").onclick = () => doShare(challengeUrl(seed, nameInput.value.trim(), best));
+  function doShare(u) {
+    if (navigator.share) {
+      navigator.share({ title: "音帝庙大冒险 · 好友挑战", text: "我在无尽模式打到第 " + best + " 波，来挑战我！", url: u }).catch(() => { });
+    } else copyText(u, $("cCopy"));
+  }
+  $("cGo").onclick = () => {
+    const raw = $("cPaste").value.trim();
+    const c = parseChallenge(raw);
+    if (!c) { toast("链接无效，请检查是否完整粘贴"); return; }
+    startRun(1, 1, true, { twoP: false, challenge: c });
+  };
+  overlay.querySelectorAll("[data-re]").forEach((n) => n.onclick = () => {
+    startRun(1, 1, true, { twoP: false, challenge: { seed: n.dataset.re, name: "", score: 0 } });
+  });
+  $("cBack").onclick = showMenu;
+}
+function parseChallenge(raw) {
+  if (!raw) return null;
+  try {
+    let seed = null, name = "", score = 0;
+    const qi = raw.indexOf("?");
+    if (qi >= 0) {
+      const q = new URLSearchParams(raw.slice(qi + 1));
+      seed = q.get("c"); name = q.get("n") || ""; score = parseInt(q.get("s") || "0", 10) || 0;
+    } else if (/^[A-Za-z0-9]{4,12}$/.test(raw.trim())) {
+      seed = raw.trim();
+    }
+    if (!seed) return null;
+    return { seed: String(seed).toUpperCase().slice(0, 12), name: String(name).slice(0, 12), score: score | 0 };
+  } catch (e) { return null; }
+}
+function recordChallenge(ch) {
+  const r = { seed: ch.seed, name: ch.name || "好友", score: ch.score | 0, myScore: ch.myScore | 0, t: Date.now() };
+  save.challenges = save.challenges || [];
+  save.challenges = save.challenges.filter((c) => !(c.seed === r.seed && (c.name || "好友") === r.name));
+  save.challenges.unshift(r);
+  save.challenges = save.challenges.slice(0, 20);
+  persist(true);
 }
 function showShop() {
   const pl = PERMS.map((p) => {
@@ -1998,17 +2359,17 @@ function showShop() {
   $("sBack").onclick = showMenu;
 }
 /* ---------------- 升级三选一 ---------------- */
-function rollChoices(n) {
-  const s = computeStats();
+function rollChoices(p, n) {
+  const s = p.st;
   const pool = SKILLS.filter((sk) => {
-    const cnt = RUN.skills[sk.id] || 0;
+    const cnt = p.skills[sk.id] || 0;
     if (cnt >= sk.max) return false;
     if (sk.req && !sk.req(s)) return false;
-    if (sk.id === "dash" && (RUN.skills.dash || 0) >= 1) return false;
+    if (sk.id === "dash" && (p.skills.dash || 0) >= 1) return false;
     return true;
   });
   const out = [];
-  const wOf = (sk) => (sk.r === 1 ? 100 : sk.r === 2 ? 46 : 15) * (1 + (RUN.skills[sk.id] || 0) * -0.08);
+  const wOf = (sk) => (sk.r === 1 ? 100 : sk.r === 2 ? 46 : 15) * (1 + (p.skills[sk.id] || 0) * -0.08);
   const tmp = pool.slice();
   while (out.length < n && tmp.length) {
     let total = 0; for (const sk of tmp) total += wOf(sk);
@@ -2016,17 +2377,26 @@ function rollChoices(n) {
     for (const sk of tmp) { r -= wOf(sk); if (r <= 0) { chosen = sk; break; } }
     out.push(chosen); tmp.splice(tmp.indexOf(chosen), 1);
   }
-  if (player.hp < player.maxHp * 0.55 && out.length && Math.random() < 0.55) out[out.length - 1] = HEAL_CARD;
+  if (p.hp < p.maxHp * 0.55 && out.length && Math.random() < 0.55) out[out.length - 1] = HEAL_CARD;
   return out;
 }
+function nextPendingPlayer() {
+  for (const p of players) if (p.pendingLv > 0 && p.alive && !p.down) return p;
+  return null;
+}
 function openLevelUp() {
+  const p = nextPendingPlayer();
+  if (!p) { G.state = "playing"; lastT = performance.now(); hideOverlay(); return; }
   G.state = "levelup";
-  Input.end();
+  Input.endAll();
   Sfx.levelup(); haptic(30);
-  const cards = rollChoices(3);
-  let html = '<h1 class="title" style="font-size:24px">升 级 ！</h1><div class="subtitle">Lv.' + player.level + " · 选择一个强化</div><div class='cards'>";
+  G.lvP = p;
+  const cards = rollChoices(p, 3);
+  const tag = G.twoP ? p.color.name : "";
+  let html = '<h1 class="title" style="font-size:24px">' + (tag ? tag + " 升级！" : "升 级 ！") + "</h1>" +
+    '<div class="subtitle">' + (G.twoP ? p.color.name + " · " : "") + "Lv." + p.level + " · 选择一个强化</div><div class='cards'>";
   cards.forEach((c, i) => {
-    const cnt = RUN.skills[c.id] || 0;
+    const cnt = p.skills[c.id] || 0;
     html += '<div class="card r' + (c.r || 1) + '" data-i="' + i + '">' +
       '<div class="ic">' + c.icon + "</div>" +
       '<div class="nm">' + c.name + "</div>" +
@@ -2035,31 +2405,39 @@ function openLevelUp() {
   });
   html += "</div>";
   showOverlay(html, true);
-  overlay.querySelectorAll(".card").forEach((n) => n.onclick = () => pickCard(cards[+n.dataset.i]));
+  overlay.querySelectorAll(".card").forEach((n) => n.onclick = () => pickCard(p, cards[+n.dataset.i]));
 }
-function pickCard(c) {
-  if (c.id === "heal") healPlayer(player.maxHp * 0.35, true);
+function pickCard(p, c) {
+  if (c.id === "heal") healPlayer(p, p.maxHp * 0.35, true);
   else {
-    RUN.skills[c.id] = (RUN.skills[c.id] || 0) + 1;
-    refreshStats(true);
-    if (c.id === "hp") healPlayer(18, false);
-    if (c.id === "dash") { el.btnDash.classList.remove("hidden"); }
+    p.skills[c.id] = (p.skills[c.id] || 0) + 1;
+    refreshStats(p, true);
+    if (c.id === "hp") healPlayer(p, 18, false);
   }
   Sfx.pick(); haptic(14);
-  G.pendingLevelUps = Math.max(0, (G.pendingLevelUps || 0) - 1);
+  p.pendingLv = Math.max(0, (p.pendingLv || 0) - 1);
   layoutSkillBar();
-  if (G.pendingLevelUps > 0) { openLevelUp(); return; }
+  const nxt = nextPendingPlayer();
+  if (nxt) { openLevelUp(); return; }
   G.state = "playing";
   lastT = performance.now();
   hideOverlay();
+}
+function skillCountText() {
+  return players.map((p) => (G.twoP ? p.color.name + " " : "") + Object.keys(p.skills).length + " 种").join(" · ");
+}
+function playerHpText() {
+  return players.map((p) => (G.twoP ? p.color.name + " " : "") + Math.max(0, Math.round(p.hp)) + "/" + p.maxHp).join(" · ");
 }
 function showPause() {
   showOverlay(
     '<h1 class="title" style="font-size:26px">暂 停</h1>' +
     '<div class="panel" style="text-align:center"><div style="font-size:12px;line-height:2;color:#c9d7f0">' +
-    "关卡：" + (G.endless ? "无尽 第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) + "<br>" +
+    "关卡：" + (G.endless ? (G.challenge ? "好友挑战 · " : "无尽 ") + "第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) +
+    (G.twoP ? "　👥 双人同屏" : "") + "<br>" +
+    "生命：" + playerHpText() + "<br>" +
     "本局金币：<b style='color:#ffd479'>" + G.runCoins + "</b>　击杀：" + RUN.kills + "<br>" +
-    "已获得技能：" + (Object.keys(RUN.skills).length || 0) + " 种</div></div>" +
+    "已获得技能：" + skillCountText() + "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
     '<button class="btn primary" id="pResume">▶ 继续</button>' +
     '<button class="btn ghost" id="pRestart">🔄 重开本关</button>' +
@@ -2067,7 +2445,7 @@ function showPause() {
     "</div>"
   );
   $("pResume").onclick = resumeGame;
-  $("pRestart").onclick = () => startRun(G.chapter, G.level, G.endless);
+  $("pRestart").onclick = () => startRun(G.chapter, G.level, G.endless, { twoP: G.twoP, challenge: G.challenge });
   $("pQuit").onclick = () => { G.state = "menu"; hideOverlay(); showMenu(); };
 }
 function showVictory(bonus) {
@@ -2076,11 +2454,11 @@ function showVictory(bonus) {
   const hasNext = nextLv <= CHAPTER_MAX_LEVEL;
   showOverlay(
     '<h1 class="title" style="font-size:28px">通 关 ！</h1>' +
-    '<div class="subtitle">' + chapterName(G.chapter) + " " + G.chapter + "-" + G.level + "</div>" +
+    '<div class="subtitle">' + chapterName(G.chapter) + " " + G.chapter + "-" + G.level + (G.twoP ? " · 双人同屏" : "") + "</div>" +
     '<div class="panel" style="text-align:center"><div style="font-size:13px;line-height:2.1;color:#c9d7f0">' +
     "通关奖励　<b style='color:#ffd479'>+" + bonus + " 🪙</b><br>" +
     "本局金币合计　<b style='color:#ffd479'>" + G.runCoins + " 🪙</b><br>" +
-    "击杀敌人　<b>" + RUN.kills + "</b>　·　获得技能　<b>" + Object.keys(RUN.skills).length + "</b> 种<br>" +
+    "击杀敌人　<b>" + RUN.kills + "</b>　·　技能　<b>" + skillCountText() + "</b><br>" +
     "用时　<b>" + Math.floor(G.runTime) + " 秒</b>" +
     "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
@@ -2090,19 +2468,41 @@ function showVictory(bonus) {
     '<button class="btn ghost" id="vMenu">🏠 主菜单</button>' +
     "</div></div>"
   );
-  if (hasNext) $("vNext").onclick = () => startRun(G.chapter, nextLv, false);
-  else $("vNextCh").onclick = () => startRun(Math.min(G.chapter + 1, CHAPTERS.length), 1, false);
+  if (hasNext) $("vNext").onclick = () => startRun(G.chapter, nextLv, false, { twoP: G.twoP });
+  else $("vNextCh").onclick = () => startRun(Math.min(G.chapter + 1, CHAPTERS.length), 1, false, { twoP: G.twoP });
   $("vShop").onclick = showShop;
   $("vMenu").onclick = showMenu;
 }
 function showDefeat(endless) {
   el.hud.classList.add("hidden");
+  const ch = G.challenge;
+  let challengeBlock = "";
+  if (ch) {
+    const my = G.endlessWave;
+    const win = my > (ch.score | 0);
+    const tie = my === (ch.score | 0);
+    recordChallenge({ seed: ch.seed, name: ch.name, score: ch.score, myScore: my });
+    const seed = ch.seed;
+    const url = challengeUrl(seed, save.playerName || "", my);
+    challengeBlock =
+      '<div class="panel" style="border-color:' + (win ? "#57e08a99" : "#ff8a8a99") + ';text-align:center">' +
+      '<div style="font-size:15px;font-weight:900;color:' + (win ? "#57e08a" : tie ? "#ffd479" : "#ff8a8a") + '">' +
+      (win ? "🏆 你赢了！" : tie ? "🤝 平局！" : "😵 你输了") + "</div>" +
+      '<div style="font-size:12px;color:#c9d7f0;line-height:1.9;margin-top:4px">' +
+      "我 <b style='color:#ffd479;font-size:16px'>" + my + "</b> 波　vs　" + esc(ch.name || "好友") + " <b>" + (ch.score | 0) + "</b> 波<br>" +
+      (win ? "把新纪录甩回去，让他再挑战一次 👇" : "再打一次，把场子找回来 👇") +
+      "</div>" +
+      '<div class="row"><button class="btn primary" id="dCopy">📤 回敬挑战链接</button>' +
+      '<button class="btn ghost" id="dShare">📲 分享</button></div></div>';
+  }
   showOverlay(
     '<h1 class="title" style="font-size:28px;background:linear-gradient(180deg,#ffc9c9,#ff4d63 60%,#8a1024);-webkit-background-clip:text;background-clip:text;color:transparent">你 倒 下 了</h1>' +
-    '<div class="subtitle">' + (endless ? "无尽模式 · 第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) + "</div>" +
+    '<div class="subtitle">' + (endless ? (ch ? "好友挑战 · " : "无尽模式 · ") + "第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) +
+    (G.twoP ? " · 双人同屏" : "") + "</div>" +
+    challengeBlock +
     '<div class="panel" style="text-align:center"><div style="font-size:13px;line-height:2.1;color:#c9d7f0">' +
     "本局金币已保留　<b style='color:#ffd479'>+" + G.runCoins + " 🪙</b><br>" +
-    "击杀敌人　<b>" + RUN.kills + "</b>　·　获得技能　<b>" + Object.keys(RUN.skills).length + "</b> 种<br>" +
+    "击杀敌人　<b>" + RUN.kills + "</b>　·　技能　<b>" + skillCountText() + "</b><br>" +
     "用时　<b>" + Math.floor(G.runTime) + " 秒</b>" +
     "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
@@ -2113,7 +2513,15 @@ function showDefeat(endless) {
     "</div></div>" +
     '<div class="tip">💡 提示：先去商店把金币花掉，攻击/生命/复活都会永久提升</div>'
   );
-  $("dRetry").onclick = () => startRun(G.chapter, G.level, G.endless);
+  if (ch) {
+    const url = challengeUrl(ch.seed, save.playerName || "", G.endlessWave);
+    $("dCopy").onclick = () => copyText(url, $("dCopy"));
+    $("dShare").onclick = () => {
+      if (navigator.share) navigator.share({ title: "音帝庙大冒险 · 回敬挑战", text: "我打到第 " + G.endlessWave + " 波，该你了！", url: url }).catch(() => { });
+      else copyText(url, $("dCopy"));
+    };
+  }
+  $("dRetry").onclick = () => startRun(G.chapter, G.level, G.endless, { twoP: G.twoP, challenge: ch });
   $("dShop").onclick = showShop;
   $("dMenu").onclick = showMenu;
 }
