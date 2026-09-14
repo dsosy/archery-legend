@@ -380,8 +380,8 @@ const ATTRS = {
   green: { id: "green", name: "生存", icon: "🟢", color: "#57e08a", dmgK: 0.09, utilK: 0.14, desc: "防御与续航：生命、护盾、荆棘、吸血、回复、闪避、幸运" }
 };
 const ATTR_ORDER = ["red", "purple", "green"];
-const ATTR_MAX = 15;        // 每系上限
-const ATTR_EVERY = 3;       // 每 N 次升级才获得 1 点属性（点数是稀缺资源）
+const ATTR_MAX = 10;        // 每系上限
+const ATTR_EVERY = 2;       // 每 N 次升级获得 1 点属性
 function attrLv(p, key) { return (p && p.attrs && p.attrs[key]) || 0; }
 function attrMaxed(p, key) { return attrLv(p, key) >= ATTR_MAX; }
 function anyAttrLeft(p) { return ATTR_ORDER.some((k) => !attrMaxed(p, k)); }
@@ -625,7 +625,7 @@ const DIFF = {
   roomHeal: 0.02,       // 清空房间回血比例
   levelAtk: 0.01,
   // 敌人随"本局build"一起成长：你越强，敌人越强（否则继承会让后续关卡变成碾压）
-  rubberPerLevel: 2.2,   // 玩家每升 1 级 → 敌人额外层数（关键：让继承不会变成碾压）
+  rubberPerLevel: 1.0,   // 玩家每升 1 级 → 敌人额外层数（关键：让继承不会变成碾压）
   rubberMax: 110,        // 额外层数上限
   rubberDmg: 0.7,        // 额外层数对敌人伤害的折算（伤害成长略慢于血量）
   // 玩家每级攻击加成
@@ -1002,7 +1002,7 @@ function queueLevelUps() {
   if (G.state !== "playing" && G.state !== "levelup") return;
   if (G.state === "playing" && players.some((p) => p.pendingLv > 0 && p.alive && !p.down)) openLevelUp();
 }
-function expNeed(lv) { return Math.round(6 + lv * 3.1 + lv * lv * 0.14); }
+function expNeed(lv) { return Math.round(14 + lv * 7 + lv * lv * 0.55); }   // 升级节奏：约每 12~20 个击杀升一级
 function nearestPlayer(x, y, aliveOnly) {
   let best = null, bd = Infinity;
   for (const p of players) {
@@ -2306,8 +2306,9 @@ function showHelp() {
     "· 🔴<b style='color:#ff6b6b'>狂怒</b>：攻击、攻速、暴击、多重、穿透、爆裂、斩杀<br>" +
     "· 🟣<b style='color:#b48cff'>秘法</b>：烈焰、寒冰、雷霆、弹射、分裂、环绕、天雷<br>" +
     "· 🟢<b style='color:#57e08a'>生存</b>：生命、护盾、荆棘、吸血、回复、闪避、幸运<br>" +
-    "· 升级分两步：<b>先选属性，再从该系抽 3 张技能卡选 1 张</b>；技能重复选会叠加层数<br>" +
-    "· 属性点<b>很稀缺（每 3 次升级才有 1 点，每系上限 15 点）</b>，<b>集中投资才有强度</b><br>" +
+    "· 升级时：<b>先在顶部选属性，再选该系的 3 张技能卡之一</b>（同一弹窗内完成）；技能重复选会叠加层数<br>" +
+    "· <b>升级节奏较慢</b>（约每 12~20 个击杀升一级，平均每关 1 次），不会一直被打断<br>" +
+    "· 属性点<b>很稀缺（每 2 次升级 1 点，每系上限 10 点）</b>，<b>集中投资才有强度</b><br>" +
     "· <b>敌人会跟着你的本局成长一起变强</b>：技能属性继承了，就别想一路平推<br>" +
     "· 每系等级只放大<b>该系</b>技能；本体箭矢按<b>最高属性</b>成长（所以任何流派都能打）<br><br>" +
     "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
@@ -2611,12 +2612,13 @@ function openLevelUp() {
   if (!p) { G.state = "playing"; lastT = performance.now(); hideOverlay(); return; }
   G.state = "levelup";
   Input.endAll();
+  Sfx.levelup(); haptic(30);
   G.lvP = p;
   const forced = p.pendingAttr === true;
   const wantAttr = forced || (p.attrTicks || 0) >= ATTR_EVERY || !p.lastAttr;
-  if (wantAttr && anyAttrLeft(p)) { showAttrPick(p); return; }
+  if (wantAttr && anyAttrLeft(p)) { renderLevelUp(p, true); return; }
   if (p.pendingAttr) { p.pendingAttr = false; if (!p.lastAttr) p.lastAttr = "red"; toast("三系属性已全部满级，之后只出技能卡", 1500); }
-  showSkillPick(p);
+  renderLevelUp(p, false);
 }
 /* 第一步：三系属性三选一（点数有限 → 必须取舍） */
 /* 应用 1 点属性（返回是否成功）——UI 与自动化脚本共用 */
@@ -2630,52 +2632,54 @@ function applyAttr(p, key) {
   layoutSkillBar();
   return true;
 }
-function showAttrPick(p) {
-  G.lvStep = "attr";
-  Sfx.levelup(); haptic(30);
+/* 升级界面（单屏两步）：有属性点时先在顶部选属性，选完就地刷新出该系技能卡 */
+function renderLevelUp(p, showAttr) {
+  G.lvStep = showAttr ? "attr" : "skill";
+  const color = (showAttr ? null : (p.lastAttr || "red"));
+  const a = color ? (ATTRS[color] || ATTRS.red) : null;
   const tag = G.twoP ? pName(p) + " · " : "";
-  let html = '<h1 class="title" style="font-size:24px">' + tag + "升 级 ！</h1>" +
-    '<div class="subtitle">第 1 步 / 共 2 步 · 选择要强化的属性（点数有限，集中才强）</div>' +
-    '<div class="cards">';
-  ATTR_ORDER.forEach((k, i) => {
-    const a = ATTRS[k], cur = attrLv(p, k), full = cur >= ATTR_MAX;
-    if (full) {
-      html += '<div class="card" style="border-color:#ffffff22;opacity:.45">' +
-        '<div class="ic">' + a.icon + "</div>" +
-        '<div class="nm" style="color:#7f90ad">' + a.name + "</div>" +
-        '<div class="ds" style="font-size:11px">已达上限 Lv.' + ATTR_MAX + "</div>" +
-        '<div class="rr" style="background:#26324a;color:#8ea0c0">已满级</div></div>';
-      return;
-    }
-    html += '<div class="card attr" data-i="' + i + '" style="border-color:' + a.color + ';box-shadow:0 0 22px ' + a.color + '44">' +
-      '<div class="ic">' + a.icon + "</div>" +
-      '<div class="nm" style="color:' + a.color + '">' + a.name + "</div>" +
-      '<div class="ds" style="font-size:11px">' + a.desc + "</div>" +
-      '<div class="stackline">Lv.' + cur + " → <b style='color:" + a.color + "'>Lv." + (cur + 1) + "</b>（上限 " + ATTR_MAX + "）<br>" +
-      "该系技能强度 <b>" + attrDmgMul(p, k).toFixed(2) + "×</b> → <b style='color:" + a.color + "'>" + (1 + a.dmgK * (cur + 1)).toFixed(2) + "×</b></div>" +
-      '<div class="rr" style="background:' + a.color + '33;color:' + a.color + '">本系技能 ' + SKILLS.filter((s) => s.attr === k).length + " 个</div></div>";
-  });
-  html += "</div>";
-  html += '<div class="tip" style="font-size:11px">当前：' + ATTR_ORDER.map((k) => ATTRS[k].icon + ATTRS[k].name + " Lv." + attrLv(p, k)).join("　") + "</div>";
-  showOverlay(html, true);
-  overlay.querySelectorAll(".card[data-i]").forEach((n) => n.onclick = () => {
-    const k = ATTR_ORDER[+n.dataset.i];
-    if (!applyAttr(p, k)) return;
-    Sfx.pick(); haptic(20);
-    toast(ATTRS[k].icon + " " + ATTRS[k].name + " 提升到 Lv." + p.attrs[k] + "（该系技能强度 ×" + attrDmgMul(p, k).toFixed(2) + "）", 1600);
-    showSkillPick(p);
-  });
-}
-/* 第二步：从该系技能池抽三张 */
-function showSkillPick(p) {
-  G.lvStep = "skill";
-  const color = p.lastAttr || "red";
-  const a = ATTRS[color] || ATTRS.red;
+  const left = Math.max(0, ATTR_EVERY - (p.attrTicks || 0));
+  let html = '<h1 class="title" style="font-size:22px">' + tag + "升 级 ！</h1>" +
+    '<div class="subtitle" style="margin:4px 0 10px">' +
+    (showAttr
+      ? "选择要强化的属性（其它系列无法兼顾）"
+      : "获得技能 · <b style=\"color:" + (a ? a.color : "#fff") + "\">" + (a ? a.icon + " " + a.name + " Lv." + attrLv(p, color) : "") + "</b>" +
+        (a ? "（该系 ×" + attrDmgMul(p, color).toFixed(2) + "）" : "") + " · 再升 " + left + " 次获得属性点") +
+    "</div>";
+  if (showAttr) {
+    html += '<div class="cards">';
+    ATTR_ORDER.forEach((k, i) => {
+      const at = ATTRS[k], cur = attrLv(p, k), full = cur >= ATTR_MAX;
+      if (full) {
+        html += '<div class="card" style="border-color:#ffffff22;opacity:.45">' +
+          '<div class="ic">' + at.icon + "</div>" +
+          '<div class="nm" style="color:#7f90ad">' + at.name + "</div>" +
+          '<div class="ds" style="font-size:11px">已达上限 Lv.' + ATTR_MAX + "</div>" +
+          '<div class="rr" style="background:#26324a;color:#8ea0c0">已满级</div></div>';
+        return;
+      }
+      html += '<div class="card attr" data-attr="' + k + '" style="border-color:' + at.color + ';box-shadow:0 0 18px ' + at.color + '33">' +
+        '<div class="ic">' + at.icon + "</div>" +
+        '<div class="nm" style="color:' + at.color + '">' + at.name + "</div>" +
+        '<div class="ds" style="font-size:10.5px">' + at.desc + "</div>" +
+        '<div class="stackline">Lv.' + cur + " → <b style='color:" + at.color + "'>Lv." + (cur + 1) + "</b>（上限 " + ATTR_MAX + "）<br>该系强度 " +
+        attrDmgMul(p, k).toFixed(2) + "× → <b style='color:" + at.color + "'>" + (1 + at.dmgK * (cur + 1)).toFixed(2) + "×</b></div></div>";
+    });
+    html += "</div>";
+    html += '<div class="tip" style="font-size:11px">当前：' + ATTR_ORDER.map((k) => ATTRS[k].icon + ATTRS[k].name + " Lv." + attrLv(p, k)).join("　") + "</div>";
+    showOverlay(html, true);
+    overlay.querySelectorAll(".card[data-attr]").forEach((el2) => el2.onclick = () => {
+      const k = el2.dataset.attr;
+      if (!applyAttr(p, k)) return;
+      Sfx.pick(); haptic(20);
+      toast(ATTRS[k].icon + " " + ATTRS[k].name + " Lv." + p.attrs[k] + "（该系 ×" + attrDmgMul(p, k).toFixed(2) + "）", 1400);
+      renderLevelUp(p, false);        // 就地刷新成技能卡，不再弹第二个窗
+    });
+    return;
+  }
+  // 技能卡
   const cards = rollChoices(p, 3, color);
-  const tag = G.twoP ? pName(p) + " · " : "";
-  let html = '<h1 class="title" style="font-size:24px">' + tag + "升 级 ！</h1>" +
-    '<div class="subtitle">获得技能 · <b style="color:' + a.color + '">' + a.icon + " " + a.name +
-    " Lv." + attrLv(p, color) + "</b>（该系技能 ×" + attrDmgMul(p, color).toFixed(2) + "）· 再升 " + Math.max(0, ATTR_EVERY - (p.attrTicks || 0)) + " 次可获得属性点</div><div class='cards'>";
+  html += '<div class="cards">';
   cards.forEach((c, i) => {
     const cnt = p.skills[c.id] || 0;
     const nextEff = c.descOf ? c.descOf(cnt + 1) : c.desc;
@@ -2689,15 +2693,15 @@ function showSkillPick(p) {
       (cAttr ? ' style="border-color:' + cAttr.color + (offColor ? "66" : "") + '"' : "") + ">" +
       '<div class="ic">' + c.icon + "</div>" +
       '<div class="nm">' + c.name + (cnt > 0 ? ' <span style="color:#ffd479;font-size:12px">Lv.' + (cnt + 1) + "</span>" : "") + "</div>" +
-      '<div class="ds">' + nextEff + "</div>" +
-      stackLine +
+      '<div class="ds">' + nextEff + "</div>" + stackLine +
       '<div class="rr" style="' + (cAttr ? "background:" + cAttr.color + "33;color:" + cAttr.color : "") + '">' +
       (c.id === "heal" ? "恢复" : cAttr.icon + cAttr.name + " · " + (c.r === 3 ? "传说" : c.r === 2 ? "稀有" : "普通")) + "</div></div>";
   });
   html += "</div>";
   showOverlay(html, true);
-  overlay.querySelectorAll(".card").forEach((n) => n.onclick = () => pickCard(p, cards[+n.dataset.i]));
+  overlay.querySelectorAll(".card[data-i]").forEach((el2) => el2.onclick = () => pickCard(p, cards[+el2.dataset.i]));
 }
+function showSkillPick(p) { renderLevelUp(p, false); }
 function pickCard(p, c) {
   let msg = "";
   if (c.id === "heal") { healPlayer(p, p.maxHp * 0.35, true); msg = "🍖 生命回复 +" + Math.round(p.maxHp * 0.35); }
