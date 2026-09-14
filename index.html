@@ -253,7 +253,7 @@ function defaultSave() {
     progress: {},          // {"1-3":true}
     unlocked: { 1: 1 },    // 每章解锁到第几关
     chapter: 1, level: 1,
-    sound: true, best: 0, endlessBest: 0, endlessUnlocked: false,
+    sound: true, best: 0, endlessBest: 0, endlessBest2P: 0, endlessUnlocked: false,
     playerName: "", challenges: []
   };
 }
@@ -1755,7 +1755,8 @@ function levelCleared() {
   showVictory(bonus);
 }
 function endlessGameOver() {  G.state = "dead";
-  save.endlessBest = Math.max(save.endlessBest || 0, G.endlessWave);
+  if (G.twoP) save.endlessBest2P = Math.max(save.endlessBest2P || 0, G.endlessWave);
+  else save.endlessBest = Math.max(save.endlessBest || 0, G.endlessWave);
   persist(true);
   showDefeat(true);
 }
@@ -2251,6 +2252,9 @@ function showMenu() {
       : "") +
     '<button class="btn " id="mContinue">▶ 新的一局　' + chapterName(save.chapter) + " " + save.chapter + "-" + save.level + "</button>" +
     '<button class="btn" id="mCoop" style="border-color:#8fd0ffaa;background:linear-gradient(180deg,#2a4a6e,#16283c);color:#eaf6ff">👥 双人同屏（和朋友一起玩）</button>' +
+    (save.endlessUnlocked
+      ? '<button class="btn" id="mEndless" style="border-color:#c9a2ffaa;background:linear-gradient(180deg,#4a3a7a,#241a3d);color:#f0e6ff">♾ 无尽模式　单人 ' + (save.endlessBest || 0) + " 波 · 双人 " + (save.endlessBest2P || 0) + " 波</button>"
+      : '<div class="tip" style="font-size:11px;opacity:.7">♾ 无尽模式：通关第 2 章解锁</div>') +
     '<div class="row">' +
     '<button class="btn ghost" id="mLevels">🗺 关卡选择</button>' +
     '<button class="btn ghost" id="mChallenge">⚔ 好友挑战</button>' +
@@ -2267,6 +2271,7 @@ function showMenu() {
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
   if ($("mKeep")) $("mKeep").onclick = () => startRun(G.carryNext.chapter, G.carryNext.level, false, { twoP: G.twoP, keep: true });
   $("mCoop").onclick = () => showCoopSetup();
+  if ($("mEndless")) $("mEndless").onclick = () => showEndlessMenu();
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
@@ -2314,7 +2319,7 @@ function showHelp() {
     "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
     "<b style='color:#57e08a'>技能、属性与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
-    "· 通关第 2 章解锁 <b>无尽模式</b><br><br>" +
+    "· 通关第 2 章解锁 <b>♾ 无尽模式</b>，主菜单可直接进入，<b>单人 / 双人各自独立</b>（纪录分开记）<br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
     "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
     "· 结束时自动比波数判胜负，还能一键「回敬挑战」把新纪录甩回去<br><br>" +
@@ -2401,7 +2406,7 @@ function showLevelSelect(twoP) {
     '<div class="tabs">' + tabs + "</div>" +
     '<div class="panel"><div class="grid-lv">' + grid + "</div></div>" +
     '<div class="panel"><h2>武器（点击装备 / 购买）</h2><div class="list">' + wl + "</div></div>" +
-    (save.endlessUnlocked ? '<button class="btn primary" id="lEndless">♾ 无尽模式（最高 ' + (save.endlessBest || 0) + " 波）</button>" : "") +
+    (save.endlessUnlocked ? '<button class="btn primary" id="lEndless">♾ ' + (coop ? "双人" : "单人") + "无尽模式（最高 " + (coop ? (save.endlessBest2P || 0) : (save.endlessBest || 0)) + " 波）</button>" : "") +
     '<div class="row"><button class="btn ghost" id="lBack">返回</button></div>' +
     '<div class="tip">' + (coop ? "👥 双人：一人管左半屏、一人管右半屏；一人倒下后清空房间即可复活<br>敌人血量与数量会相应提升" : "💡 关卡与金币永久保存，随时回来继续变强") + "</div>"
   );
@@ -2428,6 +2433,30 @@ function showLevelSelect(twoP) {
   });
   if ($("lEndless")) $("lEndless").onclick = () => startRun(1, 1, true, { twoP: coop });
   $("lBack").onclick = showMenu;
+}
+/* ---------------- 无尽模式（单人 / 双人分开） ---------------- */
+function showEndlessMenu() {
+  G.state = "menu";
+  el.hud.classList.add("hidden");
+  const best1 = save.endlessBest || 0, best2 = save.endlessBest2P || 0;
+  const nm = setupNames();
+  showOverlay(
+    '<h1 class="title" style="font-size:26px">无 尽 模 式</h1>' +
+    '<div class="subtitle">无限波次，看你能走多远</div>' +
+    '<div class="panel" style="text-align:center"><div style="font-size:12px;color:#c9d7f0;line-height:1.9">' +
+    "♾ 敌人一波比一波强，每 3 波来一次 BOSS<br>" +
+    "技能、属性、金币在波次间全部保留<br>" +
+    '<span style="color:#93a4c4;font-size:11px">每 8 波换一个主题场景</span></div></div>' +
+    '<button class="btn primary" id="eSolo" style="width:100%;max-width:320px">👤 单人无尽　' + (best1 ? "最高 " + best1 + " 波" : "还没打过") + "</button>" +
+    '<button class="btn" id="eCoop" style="width:100%;max-width:320px;border-color:#8fd0ffaa;background:linear-gradient(180deg,#2a4a6e,#16283c);color:#eaf6ff">👥 双人无尽　' +
+    (best2 ? "最高 " + best2 + " 波" : "还没打过") + "<br><span style='font-size:11px;color:#9fc4e8'>" + esc(nm[0]) + " ＆ " + esc(nm[1]) + "</span></button>" +
+    '<div class="row"><button class="btn ghost small" id="eNames">✏️ 修改双人昵称</button></div>' +
+    '<button class="btn ghost" id="eBack">返回主菜单</button>'
+  );
+  $("eSolo").onclick = () => startRun(1, 1, true, { twoP: false });
+  $("eCoop").onclick = () => startRun(1, 1, true, { twoP: true });
+  $("eNames").onclick = () => showCoopSetup();
+  $("eBack").onclick = showMenu;
 }
 /* ---------------- 好友挑战 ---------------- */
 function makeSeed() {
