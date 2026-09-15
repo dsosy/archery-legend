@@ -215,7 +215,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 /* =========================================================================
    弓箭传说 · 复刻版（单文件 H5）
    ========================================================================= */
-const BUILD = "v1.6 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
+const BUILD = "v1.7 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -400,7 +400,7 @@ function skinField(label, path, kind, extra) {
   }
   if (kind === "emoji") {
     return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 30%;min-width:76px;font-size:11px;color:#c9d7f0">' + label +
-      '<input id="' + id + '" data-path="' + path + '" value="' + (val || "") + '" maxlength="2" style="width:44px;text-align:center;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px;font-size:15px"></label>';
+      '<input id="' + id + '" data-path="' + path + '" value="' + (val || "") + '" maxlength="6" style="width:54px;text-align:center;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px;font-size:15px"></label>';
   }
   if (kind === "range") {
     return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">' + label +
@@ -453,6 +453,20 @@ function showSkinEditor() {
         skinField("统一色调", "enemy.color", "color") + skinField("混色强度", "enemy.tint", "range") +
         skinField("形状", "enemy.shape", "shape") + skinField("眼睛色", "enemy.eye", "color") +
         skinField("BOSS 主色", "boss.c1", "color") + skinField("BOSS 高光", "boss.c2", "color") + "</div>" +
+        '<div style="font-size:11px;color:#ff9e4d;font-weight:900;margin:8px 0 4px">字符 / 表情皮肤（留空＝用图形）</div>' +
+        '<div class="tip" style="font-size:10.5px;text-align:left;margin-bottom:4px">在输入框里贴一个 emoji 或汉字，主角和每种怪物就会变成它。<br>手机输入法里长按可以选表情。</div>' +
+        '<div class="row" style="gap:6px">' +
+        skinField("P1 角色", "player.glyph", "emoji") + skinField("P2 角色", "player.p2glyph", "emoji") +
+        skinField("BOSS", "boss.glyph", "emoji") +
+        '<label style="display:flex;align-items:center;gap:6px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">怪物表现' +
+        '<select id="sf_enemy_glyphMode" data-path="enemy.glyphMode" style="flex:1;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px">' +
+        [["shape", "纯图形"], ["overlay", "图形+表情"], ["glyph", "只用表情"]].map(function(o){ return '<option value="' + o[0] + '"' + ((cur.enemy.glyphMode || "shape") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") +
+        "</select></label></div>" +
+        '<div class="row" style="gap:6px;margin-top:4px">' +
+        (function () {
+          var list = [["default", "默认"], ["slime", "史莱姆"], ["bat", "蝙蝠"], ["archer", "骷髅弓手"], ["charger", "野猪"], ["bomber", "自爆蝠"], ["splitter", "分裂怪"], ["shield", "石甲兵"], ["mage", "法师"], ["healer", "祭司"], ["ghost", "游魂"], ["turret", "邪眼塔"]];
+          return list.map(function (o) { return skinField(o[1], "enemy.glyphs." + o[0], "emoji"); }).join("");
+        })() + "</div>" +
         '<div style="font-size:11px;color:#8fd0ff;font-weight:900;margin:8px 0 4px">武器图标（可换成任意 emoji）</div><div class="row" style="gap:6px">' +
         skinField("长弓", "weapons.bow", "emoji") + skinField("连弩", "weapons.crossbow", "emoji") +
         skinField("重弩", "weapons.heavy", "emoji") + skinField("法杖", "weapons.staff", "emoji") +
@@ -488,6 +502,7 @@ function showSkinEditor() {
       for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
       o[parts[parts.length - 1]] = el2.type === "range" ? parseFloat(el2.value) : el2.value;
       // 只要动了场景相关的参数，就自动切到"自定义配色"，否则改了看不出效果
+      if (el2.dataset.path.indexOf("glyph") >= 0) { enterSkinPreview(); persist(); return; }
       if (el2.dataset.path.indexOf("scene.") === 0) {
         const sk2 = skinById(save.skin);
         if (sk2.scene.useChapter) { sk2.scene.useChapter = false; toast("已切换为自定义场景配色", 1500); }
@@ -520,6 +535,7 @@ function showSkinEditor() {
       merged.player = Object.assign(base.player, obj.player || {});
       merged.arrow = Object.assign(base.arrow, obj.arrow || {});
       merged.enemy = Object.assign(base.enemy, obj.enemy || {});
+      merged.enemy.glyphs = Object.assign({}, (obj.enemy && obj.enemy.glyphs) || {});
       merged.boss = Object.assign(base.boss, obj.boss || {});
       merged.weapons = Object.assign(base.weapons, obj.weapons || {});
       const key = newSkinKey();
@@ -1113,9 +1129,10 @@ function defaultSkin() {
   return {
     name: "我的皮肤",
     scene: { useChapter: false, top: "#2a6b47", mid: "#0b1220", bottom: "#070a12", accent: "#7ff0a8", grid: "#ffffff", gridA: 0.05, pattern: "grid", vignette: 0.66 },
-    player: { b1: "#9fe870", b2: "#2f7a3f", bow: "#f5d6a0", shape: "circle", p2b1: "#8fd0ff", p2b2: "#2b6fa8", p2bow: "#ffd7a0", p2shape: "circle" },
+    player: { b1: "#9fe870", b2: "#2f7a3f", bow: "#f5d6a0", shape: "circle", p2b1: "#8fd0ff", p2b2: "#2b6fa8", p2bow: "#ffd7a0", p2shape: "circle", glyph: "", p2glyph: "" },
     arrow: { color: "#ffe9a8", p2color: "#bfe6ff", shape: "arrow", glow: 10 },
-    enemy: { mode: "type", color: "#ff5c72", tint: 0, shape: "default", eye: "#08111c" },
+    enemy: { mode: "type", color: "#ff5c72", tint: 0, shape: "default", eye: "#08111c", glyphMode: "shape", glyphs: {} },
+    playerGlyph: "", playerGlyph2: "",
     boss: { c1: "#c77dff", c2: "#ffffff" },
     weapons: { bow: "🏹", crossbow: "🎯", heavy: "🗡️", staff: "🔮", trident: "🔱" },
     fx: { hit: "#ffffff", crit: "#ffd479" }
@@ -1151,6 +1168,20 @@ const SKINS = {
     fx: { hit: "#b892ff", crit: "#ff7ab8" }
   })
 };
+SKINS.emoji = Object.assign(defaultSkin(), {
+  name: "表情包大乱斗",
+  scene: { useChapter: false, top: "#101a2e", mid: "#0a1120", bottom: "#05070f", accent: "#ffd479", grid: "#ffd479", gridA: 0.05, pattern: "dots", vignette: 0.6 },
+  player: { b1: "#ffd479", b2: "#b8860b", bow: "#ffffff", shape: "circle", p2b1: "#8fd0ff", p2b2: "#2b6fa8", p2bow: "#ffffff", p2shape: "circle", glyph: "🧝", p2glyph: "🧙" },
+  arrow: { color: "#ffe9a8", p2color: "#bfe6ff", shape: "arrow", glow: 12 },
+  enemy: {
+    mode: "type", color: "#ff5c72", tint: 0.25, shape: "default", eye: "#08111c", glyphMode: "glyph",
+    glyphs: { default: "👾", slime: "🟢", bat: "🦇", archer: "💀", charger: "🐗", bomber: "💣", splitter: "🫧", shield: "🛡️", mage: "🧙", healer: "🧑‍⚕️", ghost: "👻", turret: "👁️" }
+  },
+  boss: { c1: "#ff5c72", c2: "#ffd479", glyph: "👹" },
+  weapons: { bow: "🏹", crossbow: "🎯", heavy: "🗡️", staff: "🪄", trident: "🔱" },
+  fx: { hit: "#ffffff", crit: "#ffd479" }
+});
+
 const SHAPES = ["circle", "hex", "star", "blob", "robot", "ghost"];
 const PATTERNS = ["grid", "dots", "waves", "none"];
 function wIcon(w) { const sk = activeSkin(); return (sk.weapons && sk.weapons[w.id]) || w.icon; }
@@ -1176,6 +1207,22 @@ function playerColors(idx) {
   return idx === 1
     ? { name: "P2", body0: "#ffffff", body1: sk.player.p2b1, body2: sk.player.p2b2, bow: sk.player.p2bow, ui: sk.player.p2b1, shape: sk.player.p2shape || sk.player.shape }
     : { name: "P1", body0: "#ffffff", body1: sk.player.b1, body2: sk.player.b2, bow: sk.player.bow, ui: sk.player.b1, shape: sk.player.shape };
+}
+/* 把 emoji / 字符画在指定位置 */
+function drawGlyph(glyph, cx, cy, size, alpha) {
+  if (!glyph) return;
+  ctx2d.save();
+  if (alpha !== undefined) ctx2d.globalAlpha = alpha;
+  ctx2d.font = Math.round(size) + "px system-ui,'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+  ctx2d.textAlign = "center"; ctx2d.textBaseline = "middle";
+  ctx2d.fillText(glyph, cx, cy);
+  ctx2d.restore();
+}
+function enemyGlyph(e) {
+  const sk = activeSkin();
+  const g = sk.enemy.glyphs || {};
+  if (e.boss) return sk.boss.glyph || g.default || "";
+  return g[e.type] || g.default || "";
 }
 function enemyColor(e) {
   const sk = activeSkin();
@@ -2611,9 +2658,19 @@ function drawPlayer(p) {
   g2.addColorStop(0, p.color.body0);
   g2.addColorStop(0.35, p.color.body1);
   g2.addColorStop(1, p.color.body2);
-  ctx2d.fillStyle = g2;
-  drawBodyShape(p.x, p.y + bob, r, (p.color && p.color.shape) || "circle");
-  ctx2d.fill();
+  const pGlyph = (p.idx === 1 ? activeSkin().player.p2glyph : activeSkin().player.glyph) || "";
+  if (pGlyph) {
+    // 用字符当身体：底部画个淡淡的底衬，保证在浅色背景上也看得清
+    ctx2d.globalAlpha = flick * 0.28;
+    ctx2d.fillStyle = p.color.body2;
+    ctx2d.beginPath(); ctx2d.arc(p.x, p.y + bob, r * 1.05, 0, TAU); ctx2d.fill();
+    ctx2d.globalAlpha = flick;
+    drawGlyph(pGlyph, p.x, p.y + bob, r * 2.3);
+  } else {
+    ctx2d.fillStyle = g2;
+    drawBodyShape(p.x, p.y + bob, r, (p.color && p.color.shape) || "circle");
+    ctx2d.fill();
+  }
   ctx2d.strokeStyle = "#0b1a10"; ctx2d.lineWidth = 2.5; ctx2d.stroke();
   // 弓（朝向）
   const fa = p.face;
@@ -2683,6 +2740,21 @@ function enemyShape(e) {
   if (flash) col = "#ffffff";
   const skShape = sk.enemy.shape && sk.enemy.shape !== "default" ? sk.enemy.shape : null;
   const skEye = sk.enemy.eye || "#08111c";
+  const gMode = sk.enemy.glyphMode || "shape";
+  const glyph = enemyGlyph(e);
+  if (glyph && gMode === "glyph") {
+    // 只用字符：底下留一圈淡淡的阴影，保留"这是敌人"的辨识度
+    ctx2d.globalAlpha = 0.25; ctx2d.fillStyle = "#000000";
+    ctx2d.beginPath(); ctx2d.ellipse(0, r * 0.8, r * 0.75, r * 0.3, 0, 0, TAU); ctx2d.fill();
+    ctx2d.globalAlpha = 1;
+    drawGlyph(glyph, 0, 0, r * (e.boss ? 2.2 : 2.4));
+    if (e.slow > 0) { ctx2d.globalAlpha = 0.45; ctx2d.fillStyle = "#9fdcff"; ctx2d.beginPath(); ctx2d.arc(0, 0, r * 1.35, 0, TAU); ctx2d.fill(); ctx2d.globalAlpha = 1; }
+    if (flash) { ctx2d.globalAlpha = 0.55; ctx2d.fillStyle = "#ffffff"; ctx2d.beginPath(); ctx2d.arc(0, 0, r * 1.2, 0, TAU); ctx2d.fill(); ctx2d.globalAlpha = 1; }
+    if (e.burn > 0) drawGlyph("🔥", rand(-r, r) * 0.5, -r * 0.95, r * 0.7);
+    if (e.elite) { ctx2d.strokeStyle = "#ffd479"; ctx2d.lineWidth = 2; ctx2d.beginPath(); ctx2d.arc(0, 0, r + 4, 0, TAU); ctx2d.stroke(); }
+    ctx2d.restore();
+    return;
+  }
   if (!e.boss && skShape) {
     ctx2d.fillStyle = col;
     drawBodyShape(0, 0, r, skShape);
@@ -2770,6 +2842,7 @@ function enemyShape(e) {
   // 状态
   if (e.burn > 0) { ctx2d.fillStyle = "#ff8a3d"; ctx2d.beginPath(); ctx2d.arc(rand(-r, r) * 0.5, -r * 0.6, 3 * V.scale, 0, TAU); ctx2d.fill(); }
   if (e.elite) { ctx2d.strokeStyle = "#ffd479"; ctx2d.lineWidth = 2; ctx2d.beginPath(); ctx2d.arc(0, 0, r + 3, 0, TAU); ctx2d.stroke(); }
+  if (glyph && gMode === "overlay") drawGlyph(glyph, 0, 0, r * 1.7);
   ctx2d.restore();
 }
 function drawEnemies() {
@@ -3066,7 +3139,8 @@ function showHelp() {
     "· 背景音乐会随场景切换（菜单 / 战斗 / BOSS），可在主菜单关掉音效<br><br>" +
     "<b style='color:#ffd479'>🎨 皮肤工坊</b><br>" +
     "· 主菜单进入，可自定义 <b>场景 / 玩家 / 箭矢 / 怪物 / BOSS / 武器图标</b>，改完立刻在下半屏预览<br>" +
-    "· 内置 4 套：经典（跟随章节配色）/ 霓虹夜城 / 水墨宣纸 / 糖果乐园<br>" +
+    "· 内置 5 套：经典（跟随章节配色）/ 霓虹夜城 / 水墨宣纸 / 糖果乐园 / 表情包大乱斗<br>" +
+    "· <b>字符皮肤</b>：给主角、每种怪物、BOSS 各贴一个 emoji（🧝🦇👹…），可选「纯图形 / 图形+表情 / 只用表情」<br>" +
     "· 内置皮肤点「＋ 新建」即可复制一份随便改，改完能<b>导出 JSON</b> 发给朋友导入<br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
     "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
