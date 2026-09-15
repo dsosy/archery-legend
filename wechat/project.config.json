@@ -1,0 +1,18 @@
+{
+  "description": "音帝庙大冒险（微信小游戏版）",
+  "appid": "touristappid",
+  "projectname": "yindimiao-adventure",
+  "setting": {
+    "es6": true,
+    "minified": false,
+    "postcss": false,
+    "urlCheck": false,
+    "autoAudits": false,
+    "uploadWithSourceMap": true
+  },
+  "compileType": "game",
+  "libVersion": "latest",
+  "packOptions": {
+    "ignore": []
+  }
+}
