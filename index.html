@@ -96,6 +96,8 @@ canvas#cv{position:absolute;left:0;top:0;width:100%;height:100%;display:block;z-
   padding:calc(10px + var(--safeT)) calc(12px + var(--safeR)) calc(10px + var(--safeB)) calc(12px + var(--safeL));
   background:radial-gradient(120% 90% at 50% 0%,#16233ccc,#05070e 70%),#05070e;overflow-y:auto;overscroll-behavior:contain}
 .screen.dim{background:#03060cd9;backdrop-filter:blur(3px)}
+.screen.skinpreview{background:transparent;justify-content:flex-start;padding-top:6px}
+.screen.skinpreview .panel{background:linear-gradient(180deg,#101a2ccc,#0a1120ee)}
 h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-height:1.1;
   background:linear-gradient(180deg,#fff3d0,#ffb02e 60%,#b96a12);-webkit-background-clip:text;background-clip:text;color:transparent;
   filter:drop-shadow(0 4px 14px #ff9a2e55)}
@@ -213,7 +215,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 /* =========================================================================
    弓箭传说 · 复刻版（单文件 H5）
    ========================================================================= */
-const BUILD = "v1.5 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
+const BUILD = "v1.6 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -257,7 +259,7 @@ function defaultSave() {
     sound: true, best: 0, endlessBest: 0, endlessBest2P: 0, endlessUnlocked: false,
     runSnapshot: null, tutorialDone: false, daily: null,
     ach: {}, stats: { kills: 0, runs: 0, clears: 0, coins: 0, bestWave: 0, bestDaily: 0, bossKills: 0, noHitRooms: 0 },
-    board: [],
+    board: [], skin: "classic", customSkins: {},
     playerName: "", challenges: []
   };
 }
@@ -336,6 +338,198 @@ function showBoard() {
   $("bChallenge").onclick = showChallenge;
   $("bClear").onclick = () => { if (confirm("清空排行榜？")) { save.board = []; persist(true); showBoard(); } };
   $("bBack").onclick = showMenu;
+}
+
+/* ======================= 皮肤编辑器 ======================= */
+const SKIN_SHAPE_CN = { circle: "圆", hex: "六边", star: "星星", blob: "果冻", robot: "机甲", ghost: "幽灵", default: "跟随类型" };
+const SKIN_PAT_CN = { grid: "方格", dots: "圆点", waves: "波浪", none: "无" };
+function newSkinKey() {
+  return "s" + Date.now().toString(36).slice(-5);
+}
+function duplicateSkin(srcId) {
+  const src = skinById(srcId);
+  const key = newSkinKey();
+  save.customSkins[key] = JSON.parse(JSON.stringify(Object.assign(defaultSkin(), src, { name: (src.name || "皮肤") + " 副本" })));
+  save.skin = "mine:" + key;
+  persist(true);
+  return key;
+}
+function enterSkinPreview() {
+  if (players.length < 2) {
+    players = [createPlayer(0), createPlayer(1)];
+    players.forEach((p, i) => { refreshStats(p, false); p.hp = p.maxHp; });
+  }
+  players[0].x = V.w * 0.3; players[0].y = V.h * 0.7; players[0].walk = 1.2;
+  players[1].x = V.w * 0.7; players[1].y = V.h * 0.7; players[1].walk = 2.4;
+  G.previewEnemies = [
+    Object.assign({}, ENEMIES.slime, { type: "slime", color: ENEMIES.slime.color, anim: 0.6, hitFlash: 0, slow: 0, burn: 0, elite: false, boss: false, x: V.w * 0.28, y: V.h * 0.34, r: 16 * V.scale }),
+    Object.assign({}, ENEMIES.bat, { type: "bat", color: ENEMIES.bat.color, anim: 1.4, hitFlash: 0, slow: 0, burn: 0, elite: false, boss: false, x: V.w * 0.5, y: V.h * 0.28, r: 13 * V.scale }),
+    Object.assign({}, ENEMIES.shield, { type: "shield", color: ENEMIES.shield.color, anim: 0.2, hitFlash: 0, slow: 0, burn: 0, elite: true, boss: false, x: V.w * 0.72, y: V.h * 0.34, r: 22 * V.scale })
+  ];
+  G.previewArrows = [
+    { x: V.w * 0.42, y: V.h * 0.52, ang: -0.5, r: 5 * V.scale, len: 18 * V.scale, color: activeSkin().arrow.color },
+    { x: V.w * 0.62, y: V.h * 0.52, ang: 0.5, r: 5 * V.scale, len: 18 * V.scale, color: activeSkin().arrow.p2color }
+  ];
+}
+function renderSkinPreview(w, h) {
+  drawBackground(w, h);
+  if (G.previewEnemies) for (const e of G.previewEnemies) enemyShape(e);
+  if (G.previewArrows) for (const a of G.previewArrows) drawOneArrow(a);
+  for (const p of players) drawPlayer(p);
+  const vg = (scenePalette().vignette === undefined ? 0.66 : scenePalette().vignette);
+  if (vg > 0.3) drawVignette(w, h);
+}
+function skinField(label, path, kind, extra) {
+  const sk = skinById(save.skin);
+  const parts = path.split(".");
+  const val = parts.reduce((o, k) => (o ? o[k] : undefined), sk);
+  const id = "sf_" + path.replace(/\./g, "_");
+  if (kind === "color") {
+    return '<label style="display:flex;align-items:center;gap:8px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">' +
+      '<input type="color" id="' + id + '" data-path="' + path + '" value="' + (val || "#000000") + '" style="width:34px;height:26px;border:none;background:none;padding:0">' + label + "</label>";
+  }
+  if (kind === "shape") {
+    return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">' + label +
+      '<select id="' + id + '" data-path="' + path + '" style="flex:1;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px">' +
+      SHAPES.map((s) => '<option value="' + s + '"' + (val === s ? " selected" : "") + ">" + (SKIN_SHAPE_CN[s] || s) + "</option>").join("") + "</select></label>";
+  }
+  if (kind === "pattern") {
+    return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">' + label +
+      '<select id="' + id + '" data-path="' + path + '" style="flex:1;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px">' +
+      PATTERNS.map((s) => '<option value="' + s + '"' + (val === s ? " selected" : "") + ">" + (SKIN_PAT_CN[s] || s) + "</option>").join("") + "</select></label>";
+  }
+  if (kind === "emoji") {
+    return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 30%;min-width:76px;font-size:11px;color:#c9d7f0">' + label +
+      '<input id="' + id + '" data-path="' + path + '" value="' + (val || "") + '" maxlength="2" style="width:44px;text-align:center;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:8px;padding:3px;font-size:15px"></label>';
+  }
+  if (kind === "range") {
+    return '<label style="display:flex;align-items:center;gap:6px;flex:1 1 46%;min-width:130px;font-size:11px;color:#c9d7f0">' + label +
+      '<input type="range" id="' + id + '" data-path="' + path + '" min="0" max="' + (extra ? extra.max : 1) + '" step="0.02" value="' + (val === undefined ? 0 : val) + '" style="flex:1"></label>';
+  }
+  return "";
+}
+function showSkinEditor() {
+  G.state = "skinedit";
+  el.hud.classList.add("hidden");
+  const skins = allSkins();
+  const curId = save.skin || "classic";
+  const cur = skinById(curId);
+  const list = Object.keys(skins).map((id) => {
+    const s = skins[id];
+    return '<div class="item" data-skin="' + id + '" style="cursor:pointer;' + (id === curId ? "border-color:#ffd479" : "") + '">' +
+      '<div class="ic">' + (s.builtin ? "🎨" : "✏️") + "</div>" +
+      "<div class='tx'><div class='nm'>" + esc(s.data.name || id) + (s.builtin ? ' <span style="color:#8ea0c0;font-size:10px">内置</span>' : "") + "</div>" +
+      "<div class='ds'>" + (s.data.scene && s.data.scene.useChapter ? "场景跟随章节" : "自定义场景配色") + " · " + (SKIN_SHAPE_CN[s.data.player.shape] || "") + "</div></div>" +
+      (id === curId ? '<div class="pill">使用中</div>' : "") + "</div>";
+  }).join("");
+  const isMine = curId.indexOf("mine:") === 0;
+  showOverlay(
+    '<div style="width:min(700px,96vw)">' +
+    '<h1 class="title" style="font-size:22px">皮肤工坊</h1>' +
+    '<div class="subtitle">改完立即在下半屏看到效果</div>' +
+    '<div class="panel" style="max-height:34vh;overflow-y:auto"><h2>选择皮肤</h2><div class="list">' + list + "</div>" +
+    '<div class="row"><button class="btn ghost small" id="skNew">＋ 新建（复制当前）</button>' +
+    (isMine ? '<button class="btn ghost small" id="skDel">🗑 删除此皮肤</button>' : "") + "</div></div>" +
+    (isMine
+      ? '<div class="panel" style="max-height:40vh;overflow-y:auto"><h2>编辑：' + esc(cur.name) + "</h2>" +
+        '<input id="skName" value="' + esc(cur.name) + '" maxlength="12" style="width:100%;margin:2px 0 10px;padding:7px;border-radius:9px;border:1px solid #3a4f78;background:#0e1729;color:#e9f0ff;text-align:center">' +
+        '<div style="font-size:11px;color:#ffd479;font-weight:900;margin:4px 0">场景</div>' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#c9d7f0;margin-bottom:4px">' +
+        '<input type="checkbox" id="skChapter"' + (cur.scene.useChapter ? " checked" : "") + '> 场景跟随章节配色（勾上则下面的背景色不生效）</label>' +
+        '<div class="row" style="gap:6px">' +
+        skinField("背景上", "scene.top", "color") + skinField("背景中", "scene.mid", "color") +
+        skinField("背景下", "scene.bottom", "color") + skinField("强调色", "scene.accent", "color") +
+        skinField("纹理色", "scene.grid", "color") + skinField("纹理", "scene.pattern", "pattern") +
+        skinField("暗角", "scene.vignette", "range", { max: 0.9 }) + "</div>" +
+        '<div style="font-size:11px;color:#9fe870;font-weight:900;margin:8px 0 4px">玩家</div><div class="row" style="gap:6px">' +
+        skinField("P1 亮部", "player.b1", "color") + skinField("P1 暗部", "player.b2", "color") +
+        skinField("P1 弓", "player.bow", "color") + skinField("P1 形状", "player.shape", "shape") +
+        skinField("P2 亮部", "player.p2b1", "color") + skinField("P2 暗部", "player.p2b2", "color") +
+        skinField("P2 弓", "player.p2bow", "color") + skinField("P2 形状", "player.p2shape", "shape") + "</div>" +
+        '<div style="font-size:11px;color:#b48cff;font-weight:900;margin:8px 0 4px">箭矢</div><div class="row" style="gap:6px">' +
+        skinField("箭色", "arrow.color", "color") + skinField("P2 箭色", "arrow.p2color", "color") +
+        skinField("形状", "arrow.shape", "shape", null) + skinField("光晕", "arrow.glow", "range", { max: 30 }) + "</div>" +
+        '<div style="font-size:11px;color:#ff6b6b;font-weight:900;margin:8px 0 4px">怪物</div><div class="row" style="gap:6px">' +
+        skinField("统一色调", "enemy.color", "color") + skinField("混色强度", "enemy.tint", "range") +
+        skinField("形状", "enemy.shape", "shape") + skinField("眼睛色", "enemy.eye", "color") +
+        skinField("BOSS 主色", "boss.c1", "color") + skinField("BOSS 高光", "boss.c2", "color") + "</div>" +
+        '<div style="font-size:11px;color:#8fd0ff;font-weight:900;margin:8px 0 4px">武器图标（可换成任意 emoji）</div><div class="row" style="gap:6px">' +
+        skinField("长弓", "weapons.bow", "emoji") + skinField("连弩", "weapons.crossbow", "emoji") +
+        skinField("重弩", "weapons.heavy", "emoji") + skinField("法杖", "weapons.staff", "emoji") +
+        skinField("圣弓", "weapons.trident", "emoji") + "</div>" +
+        '<div class="row" style="margin-top:8px"><button class="btn ghost small" id="skExport">📤 导出 JSON</button>' +
+        '<button class="btn ghost small" id="skImport">📥 导入 JSON</button></div>' +
+        '<textarea id="skJson" placeholder="把皮肤 JSON 粘贴到这里，然后点导入" style="display:none;width:100%;height:90px;margin-top:6px;background:#0e1729;color:#e9f0ff;border:1px solid #3a4f78;border-radius:9px;padding:6px;font-size:11px"></textarea>' +
+        "</div>"
+      : '<div class="panel"><div class="tip">内置皮肤不能直接改。点上面的「＋ 新建（复制当前）」把它的参数复制成你的皮肤，再随便改。</div></div>') +
+    '<div class="row" style="margin-top:6px"><button class="btn primary" id="skPlay">▶ 用这套皮肤开打</button>' +
+    '<button class="btn ghost" id="skBack">返回</button></div>' +
+    "</div>"
+  );
+  overlay.className = "show";
+  overlay.firstChild.classList.add("skinpreview");
+  enterSkinPreview();
+  // 绑定
+  overlay.querySelectorAll("[data-skin]").forEach((el2) => el2.onclick = () => {
+    save.skin = el2.dataset.skin; persist(true); showSkinEditor();
+  });
+  $("skNew").onclick = () => { duplicateSkin(curId); showSkinEditor(); };
+  if ($("skDel")) $("skDel").onclick = () => {
+    if (!confirm("删除这套皮肤？")) return;
+    delete save.customSkins[curId.replace("mine:", "")];
+    save.skin = "classic"; persist(true); showSkinEditor();
+  };
+  $("skPlay").onclick = () => startRun(save.chapter, save.level, false, { twoP: G.twoP });
+  $("skBack").onclick = showMenu;
+  overlay.querySelectorAll("[data-path]").forEach((el2) => {
+    const setVal = () => {
+      const parts = el2.dataset.path.split(".");
+      let o = skinById(save.skin);
+      for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+      o[parts[parts.length - 1]] = el2.type === "range" ? parseFloat(el2.value) : el2.value;
+      // 只要动了场景相关的参数，就自动切到"自定义配色"，否则改了看不出效果
+      if (el2.dataset.path.indexOf("scene.") === 0) {
+        const sk2 = skinById(save.skin);
+        if (sk2.scene.useChapter) { sk2.scene.useChapter = false; toast("已切换为自定义场景配色", 1500); }
+      }
+      enterSkinPreview();
+      persist();
+    };
+    el2.addEventListener(el2.tagName === "SELECT" || el2.type === "color" ? "change" : "input", setVal);
+    if (el2.type === "color") el2.addEventListener("input", setVal);
+  });
+  if ($("skName")) $("skName").oninput = () => { skinById(save.skin).name = $("skName").value.slice(0, 12); persist(); };
+  if ($("skChapter")) $("skChapter").onchange = () => {
+    skinById(save.skin).scene.useChapter = $("skChapter").checked;
+    enterSkinPreview(); persist();
+    toast($("skChapter").checked ? "场景将跟随章节配色" : "场景使用自定义配色", 1400);
+  };
+  if ($("skExport")) $("skExport").onclick = () => {
+    const json = JSON.stringify(skinById(save.skin), null, 1);
+    $("skJson").style.display = "block"; $("skJson").value = json;
+    copyText(json, $("skExport"));
+  };
+  if ($("skImport")) $("skImport").onclick = () => {
+    const box = $("skJson");
+    if (box.style.display !== "block") { box.style.display = "block"; box.focus(); toast("把 JSON 粘进来，再点一次导入", 1800); return; }
+    try {
+      const obj = JSON.parse(box.value);
+      const base = defaultSkin();
+      const merged = Object.assign(base, obj);
+      merged.scene = Object.assign(base.scene, obj.scene || {});
+      merged.player = Object.assign(base.player, obj.player || {});
+      merged.arrow = Object.assign(base.arrow, obj.arrow || {});
+      merged.enemy = Object.assign(base.enemy, obj.enemy || {});
+      merged.boss = Object.assign(base.boss, obj.boss || {});
+      merged.weapons = Object.assign(base.weapons, obj.weapons || {});
+      const key = newSkinKey();
+      save.customSkins[key] = merged;
+      save.skin = "mine:" + key;
+      persist(true); Sfx.levelup();
+      toast("✅ 皮肤已导入并启用", 1600);
+      showSkinEditor();
+    } catch (e) { toast("❌ JSON 格式不对：" + e.message.slice(0, 30), 2200); }
+  };
 }
 
 /* ======================= 成就 ======================= */
@@ -906,6 +1100,91 @@ const CHAPTERS = [
 const CHAPTER_MAX_LEVEL = 10;
 const BOSS_LEVELS = [5, 10];
 
+/* ======================= 皮肤系统 =======================
+   一套皮肤 = 场景 / 玩家 / 武器 / 怪物 四组参数，全部是纯数据（颜色、形状、图标）。
+   可以内置、可以自己改、可以导出 JSON 分享 —— 不需要任何图片资源。 */
+function mixHex(a, b, t) {
+  const pa = [1, 3, 5].map((i) => parseInt(a.substr(i, 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.substr(i, 2), 16));
+  const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+  return "#" + c.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+}
+function defaultSkin() {
+  return {
+    name: "我的皮肤",
+    scene: { useChapter: false, top: "#2a6b47", mid: "#0b1220", bottom: "#070a12", accent: "#7ff0a8", grid: "#ffffff", gridA: 0.05, pattern: "grid", vignette: 0.66 },
+    player: { b1: "#9fe870", b2: "#2f7a3f", bow: "#f5d6a0", shape: "circle", p2b1: "#8fd0ff", p2b2: "#2b6fa8", p2bow: "#ffd7a0", p2shape: "circle" },
+    arrow: { color: "#ffe9a8", p2color: "#bfe6ff", shape: "arrow", glow: 10 },
+    enemy: { mode: "type", color: "#ff5c72", tint: 0, shape: "default", eye: "#08111c" },
+    boss: { c1: "#c77dff", c2: "#ffffff" },
+    weapons: { bow: "🏹", crossbow: "🎯", heavy: "🗡️", staff: "🔮", trident: "🔱" },
+    fx: { hit: "#ffffff", crit: "#ffd479" }
+  };
+}
+const SKINS = {
+  classic: Object.assign(defaultSkin(), { name: "经典（跟随章节配色）", scene: Object.assign(defaultSkin().scene, { useChapter: true }) }),
+  neon: Object.assign(defaultSkin(), {
+    name: "霓虹夜城",
+    scene: { useChapter: false, top: "#1b1240", mid: "#0a0f1e", bottom: "#05060f", accent: "#00e5ff", grid: "#00e5ff", gridA: 0.09, pattern: "grid", vignette: 0.72 },
+    player: { b1: "#00ffc8", b2: "#007a6a", bow: "#ffffff", shape: "hex", p2b1: "#ff5ce1", p2b2: "#7a2170", p2bow: "#ffffff", p2shape: "hex" },
+    arrow: { color: "#a6fff0", p2color: "#ffb6f2", shape: "bolt", glow: 16 },
+    enemy: { mode: "uniform", color: "#ff2e88", tint: 1, shape: "robot", eye: "#0b0016" },
+    boss: { c1: "#ff2e88", c2: "#00e5ff" },
+    fx: { hit: "#a6fff0", crit: "#ffe066" }
+  }),
+  ink: Object.assign(defaultSkin(), {
+    name: "水墨宣纸",
+    scene: { useChapter: false, top: "#f3efe4", mid: "#e8e2d4", bottom: "#dcd5c6", accent: "#2b2b2b", grid: "#2b2b2b", gridA: 0.06, pattern: "dots", vignette: 0.22 },
+    player: { b1: "#31363f", b2: "#101318", bow: "#8c1c13", shape: "circle", p2b1: "#54606e", p2b2: "#242a33", p2bow: "#8c1c13", p2shape: "circle" },
+    arrow: { color: "#1b1b1b", p2color: "#4a4a4a", shape: "arrow", glow: 4 },
+    enemy: { mode: "uniform", color: "#4a4a4a", tint: 0.55, shape: "blob", eye: "#f3efe4" },
+    boss: { c1: "#1b1b1b", c2: "#8c1c13" },
+    fx: { hit: "#1b1b1b", crit: "#8c1c13" }
+  }),
+  candy: Object.assign(defaultSkin(), {
+    name: "糖果乐园",
+    scene: { useChapter: false, top: "#ffd9ec", mid: "#ffeef7", bottom: "#ffd9ec", accent: "#ff7ab8", grid: "#ff7ab8", gridA: 0.10, pattern: "dots", vignette: 0.25 },
+    player: { b1: "#ffd166", b2: "#ff8fab", bow: "#7bdff2", shape: "star", p2b1: "#7bdff2", p2b2: "#4361ee", p2bow: "#ffd166", p2shape: "star" },
+    arrow: { color: "#ff8fab", p2color: "#7bdff2", shape: "orb", glow: 14 },
+    enemy: { mode: "uniform", color: "#b892ff", tint: 0.8, shape: "blob", eye: "#3a2b5c" },
+    boss: { c1: "#b892ff", c2: "#ffd166" },
+    fx: { hit: "#b892ff", crit: "#ff7ab8" }
+  })
+};
+const SHAPES = ["circle", "hex", "star", "blob", "robot", "ghost"];
+const PATTERNS = ["grid", "dots", "waves", "none"];
+function wIcon(w) { const sk = activeSkin(); return (sk.weapons && sk.weapons[w.id]) || w.icon; }
+function allSkins() {
+  const out = {};
+  for (const k in SKINS) out[k] = { id: k, builtin: true, data: SKINS[k] };
+  for (const k in (save.customSkins || {})) out["mine:" + k] = { id: "mine:" + k, builtin: false, key: k, data: save.customSkins[k] };
+  return out;
+}
+function skinById(id) { return (allSkins()[id] || allSkins().classic || { data: SKINS.classic }).data; }
+function activeSkin() { return skinById(save.skin || "classic"); }
+/* 场景配色：经典皮肤跟随章节目录，其它皮肤用自己的一套 */
+function scenePalette() {
+  const sk = activeSkin();
+  if (sk.scene.useChapter) {
+    const c = CHAPTERS[(G.chapter - 1) % CHAPTERS.length] || CHAPTERS[0];
+    return { top: G.endless ? "#1a1030" : c.color, mid: "#0b1220", bottom: "#070a12", accent: G.endless ? "#c9a2ff" : c.accent, grid: "#ffffff", gridA: 0.05, pattern: "grid", vignette: 0.66 };
+  }
+  return sk.scene;
+}
+function playerColors(idx) {
+  const sk = activeSkin();
+  return idx === 1
+    ? { name: "P2", body0: "#ffffff", body1: sk.player.p2b1, body2: sk.player.p2b2, bow: sk.player.p2bow, ui: sk.player.p2b1, shape: sk.player.p2shape || sk.player.shape }
+    : { name: "P1", body0: "#ffffff", body1: sk.player.b1, body2: sk.player.b2, bow: sk.player.bow, ui: sk.player.b1, shape: sk.player.shape };
+}
+function enemyColor(e) {
+  const sk = activeSkin();
+  if (e.boss) return sk.boss.c1;
+  if (sk.enemy.mode === "uniform") return sk.enemy.color;
+  const tint = sk.enemy.tint || 0;
+  return tint > 0 ? mixHex(e.color, sk.enemy.color, tint) : e.color;
+}
+
 /* ======================= 难度参数（集中调参） ======================= */
 const DIFF = {
   hpPerTier: 1.05,     // 敌人血量随层数成长
@@ -1071,7 +1350,7 @@ function setupNames() {
 }
 
 function createPlayer(idx) {
-  const c = PLAYER_COLORS[idx] || PLAYER_COLORS[0];
+  const c = playerColors(idx);
   const b = BOUND();
   const p = {
     idx: idx, color: c, name: "", attrs: { red: 0, purple: 0, green: 0 }, lastAttr: null, pendingAttr: false, attrTicks: 0,
@@ -1096,7 +1375,7 @@ function spawnArrow(p, ang, o) {
     dmg: dmg, r: (o.r || 5) * st.big * V.scale, len: (o.len || 17) * st.big * V.scale,
     life: o.life || 1.85, pierce: o.pierce !== undefined ? o.pierce : st.pierce, bounce: o.bounce !== undefined ? o.bounce : st.bounce,
     homing: o.homing !== undefined ? o.homing : st.homing, hit: [], mini: !!o.mini,
-    color: o.color || (p.idx === 1 ? "#bfe6ff" : "#ffe9a8")
+    color: o.color || (p.idx === 1 ? activeSkin().arrow.p2color : activeSkin().arrow.color)
   });
 }
 function spawnEnemy(typeKey, opts) {
@@ -2196,12 +2475,12 @@ el.btnDash2.addEventListener("pointerdown", (e) => { e.preventDefault(); doDash(
 /* ======================= 渲染 ======================= */
 let bgCache = { w: 0, h: 0, ch: -1, grad: null };
 function themeColors() {
-  const c = CHAPTERS[(G.chapter - 1) % CHAPTERS.length] || CHAPTERS[0];
-  if (G.endless) return { base: "#1a1030", accent: "#c9a2ff", line: "#4a3a7a", name: "无尽" };
-  return { base: c.color, accent: c.accent, line: "#ffffff18", name: c.name };
+  const p = scenePalette();
+  return { base: p.top, accent: p.accent, line: "#ffffff18", name: G.endless ? "无尽" : chapterName(G.chapter) };
 }
 function render() {
   const w = V.w, h = V.h;
+  if (G.state === "skinedit") { ctx2d.save(); renderSkinPreview(w, h); ctx2d.restore(); return; }
   ctx2d.save();
   if (G.shake > 0.3) ctx2d.translate(rand(-1, 1) * G.shake * 0.35, rand(-1, 1) * G.shake * 0.35);
   drawBackground(w, h);
@@ -2223,22 +2502,38 @@ function render() {
 }
 function drawBackground(w, h) {
   const th = themeColors();
-  if (!bgCache.grad || bgCache.w !== w || bgCache.h !== h || bgCache.ch !== G.chapter || bgCache.endless !== G.endless) {
+  const pal = scenePalette();
+  const sig = w + "x" + h + "|" + pal.top + pal.mid + pal.bottom + "|" + (G.endless ? 1 : 0) + "|" + G.chapter + "|" + (save.skin || "classic");
+  if (!bgCache.grad || bgCache.sig !== sig) {
     const g = ctx2d.createLinearGradient(0, 0, w * 0.35, h);
-    g.addColorStop(0, th.base);
-    g.addColorStop(0.55, "#0b1220");
-    g.addColorStop(1, "#070a12");
-    bgCache = { w: w, h: h, ch: G.chapter, endless: G.endless, grad: g };
+    g.addColorStop(0, pal.top);
+    g.addColorStop(0.55, pal.mid);
+    g.addColorStop(1, pal.bottom);
+    bgCache = { w: w, h: h, ch: G.chapter, endless: G.endless, sig: sig, grad: g };
   }
   ctx2d.fillStyle = bgCache.grad;
   ctx2d.fillRect(0, 0, w, h);
-  // 地板纹理
+  // 地板纹理（由皮肤决定样式与颜色）
+  const pal2 = scenePalette();
   const tile = Math.round(64 * V.scale);
-  ctx2d.strokeStyle = "#ffffff0d"; ctx2d.lineWidth = 1;
-  ctx2d.beginPath();
-  for (let x = 0; x < w; x += tile) { ctx2d.moveTo(x, 0); ctx2d.lineTo(x, h); }
-  for (let y = 0; y < h; y += tile) { ctx2d.moveTo(0, y); ctx2d.lineTo(w, y); }
-  ctx2d.stroke();
+  ctx2d.save();
+  ctx2d.globalAlpha = (pal2.gridA === undefined ? 0.05 : pal2.gridA) * 3;
+  ctx2d.strokeStyle = pal2.grid || "#ffffff"; ctx2d.fillStyle = pal2.grid || "#ffffff"; ctx2d.lineWidth = 1;
+  if (pal2.pattern === "grid") {
+    ctx2d.beginPath();
+    for (let x = 0; x < w; x += tile) { ctx2d.moveTo(x, 0); ctx2d.lineTo(x, h); }
+    for (let y = 0; y < h; y += tile) { ctx2d.moveTo(0, y); ctx2d.lineTo(w, y); }
+    ctx2d.stroke();
+  } else if (pal2.pattern === "dots") {
+    for (let x = tile / 2; x < w; x += tile) for (let y = tile / 2; y < h; y += tile) { ctx2d.beginPath(); ctx2d.arc(x, y, 2.2 * V.scale, 0, TAU); ctx2d.fill(); }
+  } else if (pal2.pattern === "waves") {
+    for (let y = 0; y < h; y += tile) {
+      ctx2d.beginPath();
+      for (let x = 0; x <= w; x += 8) ctx2d.lineTo(x, y + Math.sin((x / tile) * 1.6) * 6 * V.scale);
+      ctx2d.stroke();
+    }
+  }
+  ctx2d.restore();
   // 中央光晕
   const rg = ctx2d.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.62);
   rg.addColorStop(0, th.accent + "22");
@@ -2252,9 +2547,10 @@ function drawBackground(w, h) {
   ctx2d.strokeRect(b.l + 3, b.t + 3, b.r - b.l - 6, b.b - b.t - 6);
 }
 function drawVignette(w, h) {
+  const vg = (scenePalette().vignette === undefined ? 0.66 : scenePalette().vignette);
   const g = ctx2d.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.38, w / 2, h / 2, Math.max(w, h) * 0.78);
   g.addColorStop(0, "transparent");
-  g.addColorStop(1, "#000000aa");
+  g.addColorStop(1, "rgba(0,0,0," + (vg * 1.0).toFixed(2) + ")");
   ctx2d.fillStyle = g; ctx2d.fillRect(0, 0, w, h);
   // 残血警示：血线越低，屏幕边缘脉动越强
   let ratio = 1;
@@ -2316,7 +2612,8 @@ function drawPlayer(p) {
   g2.addColorStop(0.35, p.color.body1);
   g2.addColorStop(1, p.color.body2);
   ctx2d.fillStyle = g2;
-  ctx2d.beginPath(); ctx2d.arc(p.x, p.y + bob, r, 0, TAU); ctx2d.fill();
+  drawBodyShape(p.x, p.y + bob, r, (p.color && p.color.shape) || "circle");
+  ctx2d.fill();
   ctx2d.strokeStyle = "#0b1a10"; ctx2d.lineWidth = 2.5; ctx2d.stroke();
   // 弓（朝向）
   const fa = p.face;
@@ -2349,14 +2646,60 @@ function drawPlayer(p) {
     ctx2d.fillText(pName(p), p.x, p.y - r - 6);
   }
 }
+/* 皮肤可选的几种"身体"形状 */
+function drawBodyShape(cx, cy, r, kind) {
+  ctx2d.beginPath();
+  if (kind === "hex") {
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + Math.PI / 6; const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; i ? ctx2d.lineTo(x, y) : ctx2d.moveTo(x, y); }
+    ctx2d.closePath();
+  } else if (kind === "star") {
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU - Math.PI / 2; const rr = i % 2 ? r * 0.55 : r * 1.12; const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; i ? ctx2d.lineTo(x, y) : ctx2d.moveTo(x, y); }
+    ctx2d.closePath();
+  } else if (kind === "blob") {
+    for (let i = 0; i <= 24; i++) { const a = (i / 24) * TAU; const rr = r * (1 + Math.sin(a * 3) * 0.12); const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; i ? ctx2d.lineTo(x, y) : ctx2d.moveTo(x, y); }
+    ctx2d.closePath();
+  } else if (kind === "robot") {
+    const s = r * 0.92;
+    ctx2d.moveTo(cx - s, cy - s); ctx2d.lineTo(cx + s * 0.75, cy - s); ctx2d.lineTo(cx + s, cy - s * 0.2);
+    ctx2d.lineTo(cx + s, cy + s * 0.7); ctx2d.lineTo(cx - s, cy + s * 0.7); ctx2d.closePath();
+  } else if (kind === "ghost") {
+    ctx2d.moveTo(cx - r, cy + r * 0.7);
+    ctx2d.quadraticCurveTo(cx - r, cy - r * 1.25, cx, cy - r * 1.25);
+    ctx2d.quadraticCurveTo(cx + r, cy - r * 1.25, cx + r, cy + r * 0.7);
+    for (let i = 0; i < 3; i++) { ctx2d.quadraticCurveTo(cx + r - (i * 2 + 1) * (r / 3), cy + r * (1.25 + (i % 2 ? -0.35 : 0)), cx + r - (i + 1) * (2 * r / 3), cy + r * 0.7); }
+    ctx2d.closePath();
+  } else {
+    ctx2d.arc(cx, cy, r, 0, TAU);
+  }
+}
 function enemyShape(e) {
   ctx2d.save();
   ctx2d.translate(e.x, e.y);
   const r = e.r;
   const flash = e.hitFlash > 0;
-  let col = e.color;
+  const sk = activeSkin();
+  let col = enemyColor(e);
   if (e.slow > 0) col = "#9fdcff";
   if (flash) col = "#ffffff";
+  const skShape = sk.enemy.shape && sk.enemy.shape !== "default" ? sk.enemy.shape : null;
+  const skEye = sk.enemy.eye || "#08111c";
+  if (!e.boss && skShape) {
+    ctx2d.fillStyle = col;
+    drawBodyShape(0, 0, r, skShape);
+    ctx2d.fill();
+    ctx2d.strokeStyle = "#00000055"; ctx2d.lineWidth = 2; ctx2d.stroke();
+    const ea0 = Math.atan2(nearestPlayer(e.x, e.y).y - e.y, nearestPlayer(e.x, e.y).x - e.x);
+    ctx2d.fillStyle = skEye;
+    for (const s of [-0.42, 0.42]) {
+      ctx2d.beginPath();
+      ctx2d.arc(Math.cos(ea0 + s) * r * 0.34, Math.sin(ea0 + s) * r * 0.34, Math.max(1.6, r * 0.14), 0, TAU);
+      ctx2d.fill();
+    }
+    if (e.burn > 0) { ctx2d.fillStyle = "#ff8a3d"; ctx2d.beginPath(); ctx2d.arc(rand(-r, r) * 0.5, -r * 0.6, 3 * V.scale, 0, TAU); ctx2d.fill(); }
+    if (e.elite) { ctx2d.strokeStyle = "#ffd479"; ctx2d.lineWidth = 2; ctx2d.beginPath(); ctx2d.arc(0, 0, r + 3, 0, TAU); ctx2d.stroke(); }
+    ctx2d.restore();
+    return;
+  }
   // 影子
   ctx2d.fillStyle = "#00000055";
   ctx2d.beginPath(); ctx2d.ellipse(0, r * 0.85, r * 0.9, r * 0.38, 0, 0, TAU); ctx2d.fill();
@@ -2401,7 +2744,7 @@ function enemyShape(e) {
     ctx2d.closePath(); ctx2d.fill();
     ctx2d.rotate(-a * 0.8);
     const g = ctx2d.createRadialGradient(-r * 0.2, -r * 0.3, r * 0.1, 0, 0, r);
-    g.addColorStop(0, "#ffffffcc"); g.addColorStop(0.5, col); g.addColorStop(1, "#00000066");
+    g.addColorStop(0, (sk.boss.c2 || "#ffffff") + "cc"); g.addColorStop(0.5, col); g.addColorStop(1, "#00000066");
     ctx2d.fillStyle = g;
     ctx2d.beginPath(); ctx2d.arc(0, 0, r * 0.82, 0, TAU); ctx2d.fill();
     if (e.chargeState === 1) {
@@ -2419,7 +2762,7 @@ function enemyShape(e) {
   // 眼睛
   const tp1 = nearestPlayer(e.x, e.y) || players[0];
   const ea = Math.atan2(tp1.y - e.y, tp1.x - e.x);
-  ctx2d.fillStyle = "#08111c";
+  ctx2d.fillStyle = skEye;
   for (const s of [-0.42, 0.42]) {
     const ex = Math.cos(ea + s) * r * 0.34, ey = Math.sin(ea + s) * r * 0.34;
     ctx2d.beginPath(); ctx2d.arc(ex, ey, Math.max(1.6, r * 0.14), 0, TAU); ctx2d.fill();
@@ -2442,14 +2785,18 @@ function drawEnemies() {
     }
   }
 }
-function drawArrows() {
-  for (const a of arrows) {
+function drawArrows() { for (const a of arrows) drawOneArrow(a); }
+function drawOneArrow(a) {
+  {
     ctx2d.save();
     ctx2d.translate(a.x, a.y); ctx2d.rotate(a.ang);
-    ctx2d.shadowColor = a.color; ctx2d.shadowBlur = 10;
+    ctx2d.shadowColor = a.color; ctx2d.shadowBlur = (activeSkin().arrow.glow === undefined ? 10 : activeSkin().arrow.glow);
     ctx2d.fillStyle = a.color;
+    const ash = activeSkin().arrow.shape || "arrow";
     ctx2d.beginPath();
-    ctx2d.moveTo(a.len * 0.6, 0); ctx2d.lineTo(-a.len * 0.4, -a.r); ctx2d.lineTo(-a.len * 0.7, 0); ctx2d.lineTo(-a.len * 0.4, a.r);
+    if (ash === "orb") { ctx2d.arc(0, 0, a.r * 1.5, 0, TAU); }
+    else if (ash === "bolt") { ctx2d.moveTo(a.len * 0.7, 0); ctx2d.lineTo(0, -a.r * 0.7); ctx2d.lineTo(-a.len * 0.5, 0); ctx2d.lineTo(0, a.r * 0.7); }
+    else { ctx2d.moveTo(a.len * 0.6, 0); ctx2d.lineTo(-a.len * 0.4, -a.r); ctx2d.lineTo(-a.len * 0.7, 0); ctx2d.lineTo(-a.len * 0.4, a.r); }
     ctx2d.closePath(); ctx2d.fill();
     ctx2d.shadowBlur = 0;
     ctx2d.strokeStyle = "#00000055"; ctx2d.lineWidth = 1; ctx2d.stroke();
@@ -2638,6 +2985,7 @@ function showMenu() {
     '<button class="btn ghost" id="mChallenge">⚔ 好友挑战</button>' +
     '<button class="btn ghost" id="mBoard">🏆 排行榜</button>' +
     '<button class="btn ghost" id="mAch">🏆 成就 ' + achievementCount() + "/" + ACHIEVEMENTS.length + "</button>" +
+    '<button class="btn ghost" id="mSkin">🎨 皮肤工坊</button>' +
     '<button class="btn ghost" id="mShop">⚒ 强化 &amp; 武器</button>' +
     "</div>" +
     '<div class="row">' +
@@ -2658,6 +3006,7 @@ function showMenu() {
   if ($("mDaily")) $("mDaily").onclick = () => startDaily();
   if ($("mAch")) $("mAch").onclick = () => showAchievements();
   if ($("mBoard")) $("mBoard").onclick = () => showBoard();
+  if ($("mSkin")) $("mSkin").onclick = () => showSkinEditor();
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
@@ -2715,6 +3064,10 @@ function showHelp() {
     "· <b>📅 今日挑战</b>：每天 0 点换一套固定关卡（同一种子），和朋友比当天谁走得远<br>" +
     "· <b>🏆 成就</b>：共 18 个成就，达成会在战斗里弹横幅；<b>🏆 排行榜</b>自动记录你和好友的成绩<br>" +
     "· 背景音乐会随场景切换（菜单 / 战斗 / BOSS），可在主菜单关掉音效<br><br>" +
+    "<b style='color:#ffd479'>🎨 皮肤工坊</b><br>" +
+    "· 主菜单进入，可自定义 <b>场景 / 玩家 / 箭矢 / 怪物 / BOSS / 武器图标</b>，改完立刻在下半屏预览<br>" +
+    "· 内置 4 套：经典（跟随章节配色）/ 霓虹夜城 / 水墨宣纸 / 糖果乐园<br>" +
+    "· 内置皮肤点「＋ 新建」即可复制一份随便改，改完能<b>导出 JSON</b> 发给朋友导入<br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
     "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
     "· 结束时自动比波数判胜负，还能一键「回敬挑战」把新纪录甩回去<br><br>" +
@@ -2785,7 +3138,7 @@ function showLevelSelect(twoP) {
     const w = WEAPONS[id], owned = !!save.weapons[id];
     const wa = w.attr ? ATTRS[w.attr] : null;
     return '<div class="item" style="cursor:pointer;' + (wa ? "border-color:" + wa.color + "55" : "") + '" data-w="' + id + '">' +
-      '<div class="ic">' + w.icon + "</div><div class='tx'><div class='nm'>" + w.name + (save.weapon === id ? " ✅" : "") +
+      '<div class="ic">' + wIcon(w) + "</div><div class='tx'><div class='nm'>" + w.name + (save.weapon === id ? " ✅" : "") +
       (wa ? ' <span style="color:' + wa.color + ';font-size:11px">' + wa.icon + wa.name + "</span>" : ' <span style="color:#8ea0c0;font-size:11px">⚪ 无色</span>') + "</div>" +
       "<div class='ds'>" + w.desc + "</div></div>" +
       '<div class="pill' + (owned ? "" : " off") + '">' + (owned ? (save.weapon === id ? "使用中" : "装备") : "🪙" + w.cost) + "</div></div>";
