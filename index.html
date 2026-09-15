@@ -213,7 +213,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 /* =========================================================================
    弓箭传说 · 复刻版（单文件 H5）
    ========================================================================= */
-const BUILD = "v1.3 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
+const BUILD = "v1.4 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -255,6 +255,7 @@ function defaultSave() {
     unlocked: { 1: 1 },    // 每章解锁到第几关
     chapter: 1, level: 1,
     sound: true, best: 0, endlessBest: 0, endlessBest2P: 0, endlessUnlocked: false,
+    runSnapshot: null, tutorialDone: false, daily: null,
     playerName: "", challenges: []
   };
 }
@@ -282,8 +283,77 @@ function persist(force) {
   if (force || now - lastSaveAt > 400) { writeSave(); return; }
   saveTimer = setTimeout(writeSave, 400);
 }
-window.addEventListener("pagehide", () => writeSave());
-window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") writeSave(); });
+window.addEventListener("pagehide", () => { snapshotRun(); writeSave(); });
+window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { snapshotRun(); writeSave(); } });
+
+/* ======================= 新手引导 ======================= */
+function showTutorial() {
+  G.state = "tutorial";
+  Input.endAll();
+  showOverlay(
+    '<h1 class="title" style="font-size:24px">3 秒上手</h1>' +
+    '<div class="panel"><div class="tip" style="text-align:left;font-size:12.5px;line-height:2">' +
+    "1️⃣ <b>按住屏幕任意位置拖动</b> = 出现摇杆移动（不用点敌人）<br>" +
+    "2️⃣ <b>角色会自动朝最近的敌人射箭</b>，你只需要走位躲子弹<br>" +
+    "3️⃣ 清空所有房间就能过关，<b>升级时先选属性（🔴🟣🟢）再选技能</b><br>" +
+    "4️⃣ <b>阵亡会清零本局成长</b>，但金币永久保留，去商店买永久强化<br>" +
+    "5️⃣ 技能与属性<b>会继承到下一关</b>，所以越打越强<br>" +
+    "</div></div>" +
+    '<button class="btn primary" id="tGo" style="min-width:220px">👌 开始战斗</button>' +
+    '<div class="tip" style="font-size:11px">电脑：WASD 移动 · 空格冲刺 · P 暂停</div>'
+  );
+  $("tGo").onclick = () => {
+    save.tutorialDone = true; persist(true);
+    G.state = "playing"; lastT = performance.now(); hideOverlay(); Sfx.pick();
+  };
+}
+
+/* ======================= 对局快照（切后台 / 误刷新不丢进度） ======================= */
+function snapshotRun(over) {
+  if (!players.length) return;
+  if (G.state !== "playing" && G.state !== "paused" && G.state !== "levelup" && G.state !== "clear") return;
+  try {
+    save.runSnapshot = {
+      ts: Date.now(),
+      chapter: (over && over.chapter) || G.chapter, level: (over && over.level) || G.level,
+      endless: G.endless, endlessWave: (over && over.endlessWave) || G.endlessWave,
+      twoP: G.twoP, challenge: G.challenge || null,
+      runCoins: G.runCoins, runTime: Math.round(G.runTime), kills: RUN.kills, revivesLeft: G.revivesLeft,
+      players: players.map((p) => ({
+        name: p.name, skills: Object.assign({}, p.skills), attrs: Object.assign({}, p.attrs),
+        level: p.level, exp: p.exp || 0, attrTicks: p.attrTicks || 0, lastAttr: p.lastAttr || null,
+        hpRatio: p.maxHp ? clamp((p.hp || 0) / p.maxHp, 0.05, 1) : 1
+      }))
+    };
+    writeSave();
+  } catch (e) { }
+}
+function clearRunSnapshot() {
+  if (!save.runSnapshot) return;
+  save.runSnapshot = null;
+  writeSave();
+}
+function pendingResume() {
+  const s = save.runSnapshot;
+  if (!s || !s.players || !s.players.length) return null;
+  if (Date.now() - (s.ts || 0) > 12 * 3600 * 1000) { clearRunSnapshot(); return null; }   // 超过 12 小时作废
+  return s;
+}
+function resumeRun() {
+  const s = pendingResume();
+  if (!s) { toast("没有可以继续的对局"); showMenu(); return; }
+  G.carry = s.players.map((p) => ({
+    skills: p.skills, attrs: p.attrs, level: p.level, exp: p.exp,
+    attrTicks: p.attrTicks, lastAttr: p.lastAttr, hpRatio: p.hpRatio
+  }));
+  G.runCoins = s.runCoins || 0; RUN.kills = s.kills || 0; G.runTime = s.runTime || 0;
+  G.revivesLeft = s.revivesLeft !== undefined ? s.revivesLeft : save.perm.revive;
+  G.endlessWave = s.endlessWave || G.endlessWave;
+  Sfx.pick();
+  startRun(s.chapter, s.level, s.endless, { twoP: s.twoP, keep: true, challenge: s.challenge });
+  if (s.endless) { G.endlessWave = s.endlessWave; }
+  toast("⏸ 已回到上次的对局", 1500);
+}
 
 /* ======================= 音效（WebAudio 合成） ======================= */
 const Sfx = {
@@ -987,6 +1057,7 @@ function playerDie(p) {
   }
   G.state = "dead";
   G.carry = null; G.carryNext = null;   // 阵亡 = 本局结束，下一关不再继承
+  clearRunSnapshot();
   setTimeout(() => { if (G.endless) endlessGameOver(); else showDefeat(false); }, 900);
 }
 function gainExp(p, v) {
@@ -1582,6 +1653,7 @@ function startRun(chapter, level, endless, opts) {
   el.btnDash.classList.toggle("hidden", players[0].st.dash <= 0);
   el.btnDash2.classList.toggle("hidden", !(G.twoP && players[1].st.dash > 0));
   layoutSkillBar(); layoutHud();
+  if (!save.tutorialDone && !G.twoP && !endless && chapter === 1 && level === 1 && !opts.keep) showTutorial();
   const head = G.challenge ? "⚔ 好友挑战 · " + (G.challenge.name || "好友")
     : endless ? (G.endlessWave === 1 ? "无尽模式 · 第 1 波" : "无尽 · 第 " + G.endlessWave + " 波")
       : chapterName(chapter) + " " + chapter + "-" + level;
@@ -1647,8 +1719,12 @@ function spawnWave(idx) {
 function updateRoomText() {
   const r = G.rooms[G.room];
   const total = G.rooms.length;
-  if (r && r.boss) el.roomTxt.textContent = "⚠️ BOSS 房间";
-  else el.roomTxt.textContent = "房间 " + (G.room + 1) + "/" + total + (r && r.kind === "elite" ? " · 精英" : "");
+  let left = 0;
+  for (const e of enemies) if (!e.dead) left++;
+  for (let i = G.waveIdx + 1; i < ((r && r.waves) || []).length; i++) for (const g of r.waves[i]) left += g.n;
+  const tail = G.roomClear ? " · ✅ 已清空" : (left > 0 ? " · 敌 " + left : "");
+  if (r && r.boss) el.roomTxt.textContent = "⚠️ BOSS 房间" + tail;
+  else el.roomTxt.textContent = "房间 " + (G.room + 1) + "/" + total + (r && r.kind === "elite" ? " · 精英" : "") + tail;
   el.stageTxt.textContent = G.endless ? "无尽 · 第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level;
 }
 function checkRoomFlow(dt) {
@@ -1704,6 +1780,7 @@ function checkRoomFlow(dt) {
       if (p.hp < p.maxHp) healPlayer(p, Math.round(p.maxHp * DIFF.roomHeal), false);
     }
     Sfx.clear();
+    G.banner = { text: "房 间 清 空", sub: "+" + reward + " 🪙", t: 1.3 };
     toast("房间清空！ +" + reward + " 🪙", 1200);
     if (Math.random() < 0.35) {
       const p = players[0];
@@ -1731,7 +1808,8 @@ function nextRoom() {
 }
 function levelCleared() {
   G.state = "clear";
-  snapshotCarry();                 // 把本关的技能/等级存档，下一关继承
+  snapshotCarry();
+  snapshotRun();                 // 把本关的技能/等级存档，下一关继承
   G.carryNext = (G.level + 1) <= CHAPTER_MAX_LEVEL
     ? { chapter: G.chapter, level: G.level + 1 }
     : { chapter: Math.min(G.chapter + 1, CHAPTERS.length), level: 1 };
@@ -1752,11 +1830,16 @@ function levelCleared() {
   if (tierOf(G.chapter, G.level, 0) >= 20) save.endlessUnlocked = true;
   save.best = Math.max(save.best, tierOf(G.chapter, G.level, 0));
   persist(true);
+  snapshotRun(G.carryNext || null);   // 从菜单续玩时直接进入下一关
   Sfx.clear();
   showVictory(bonus);
 }
 function endlessGameOver() {  G.state = "dead";
-  if (G.twoP) save.endlessBest2P = Math.max(save.endlessBest2P || 0, G.endlessWave);
+  const ch = G.challenge;
+  if (ch && ch.daily) {
+    if (!save.daily || save.daily.date !== todayStr()) save.daily = { date: todayStr(), wave: 0 };
+    save.daily.wave = Math.max(save.daily.wave || 0, G.endlessWave);
+  } else if (G.twoP) save.endlessBest2P = Math.max(save.endlessBest2P || 0, G.endlessWave);
   else save.endlessBest = Math.max(save.endlessBest || 0, G.endlessWave);
   persist(true);
   showDefeat(true);
@@ -1810,6 +1893,10 @@ function updateHud() {
   }
   el.attrRow.innerHTML = attrBadges(players[0]);
   if (G.twoP && players[1]) el.attrRow2.innerHTML = attrBadges(players[1]);
+  // 剩余敌人数变化时刷新房间信息（击杀/新一波都会动）
+  let left = 0;
+  for (const e of enemies) if (!e.dead) left++;
+  if (left !== G._hudLeft) { G._hudLeft = left; updateRoomText(); }
   el.coinTxt.textContent = "🪙 " + fmt(save.coins);
   el.btnDash.classList.toggle("cd", players[0].dashCd > 0);
   if (G.twoP && players[1]) el.btnDash2.classList.toggle("cd", players[1].dashCd > 0);
@@ -1844,6 +1931,7 @@ function frame(now) {
 /* ======================= 暂停 / 继续 ======================= */
 function pauseGame() {
   if (G.state !== "playing") return;
+  snapshotRun();
   G.state = "paused";
   Input.endAll();
   showPause();
@@ -1882,6 +1970,7 @@ function render() {
   }
   ctx2d.restore();
   drawBossIntro();
+  drawBanner();
   drawVignette(w, h);
 }
 function drawBackground(w, h) {
@@ -1919,6 +2008,17 @@ function drawVignette(w, h) {
   g.addColorStop(0, "transparent");
   g.addColorStop(1, "#000000aa");
   ctx2d.fillStyle = g; ctx2d.fillRect(0, 0, w, h);
+  // 残血警示：血线越低，屏幕边缘脉动越强
+  let ratio = 1;
+  for (const p of players) if (p.alive && !p.down) ratio = Math.min(ratio, p.hp / Math.max(1, p.maxHp));
+  if (ratio < 0.32) {
+    const k = 1 - ratio / 0.32;
+    const pulse = 0.55 + 0.45 * Math.sin(G.time * (3 + k * 5));
+    const rg = ctx2d.createRadialGradient(w / 2, h / 2, Math.min(w, h) * (0.30 - k * 0.14), w / 2, h / 2, Math.max(w, h) * 0.72);
+    rg.addColorStop(0, "transparent");
+    rg.addColorStop(1, "rgba(220,20,50," + (0.45 * k * pulse).toFixed(3) + ")");
+    ctx2d.fillStyle = rg; ctx2d.fillRect(0, 0, w, h);
+  }
   let flash = 0;
   for (const p of players) flash = Math.max(flash, p.hitFlash || 0);
   if (flash > 0) {
@@ -2197,6 +2297,26 @@ function drawBossBar() {
   ctx2d.fillStyle = "#fff"; ctx2d.font = "700 11px system-ui,sans-serif"; ctx2d.textAlign = "center"; ctx2d.textBaseline = "bottom";
   ctx2d.fillText(boss.name + "   " + Math.ceil(boss.hp) + " / " + Math.ceil(boss.maxHp), V.w / 2, y - 3);
 }
+function drawBanner() {
+  if (!G.banner) return;
+  G.banner.t -= G.dt;
+  if (G.banner.t <= 0) { G.banner = null; return; }
+  const a = clamp(G.banner.t / 0.5, 0, 1);
+  ctx2d.save();
+  ctx2d.globalAlpha = a;
+  const y = V.h * 0.34;
+  ctx2d.fillStyle = "#00000077"; ctx2d.fillRect(0, y - 26 * V.scale, V.w, 58 * V.scale);
+  ctx2d.textAlign = "center"; ctx2d.textBaseline = "middle";
+  ctx2d.fillStyle = "#9fe870";
+  ctx2d.font = "900 " + (21 * V.scale).toFixed(0) + "px system-ui,sans-serif";
+  ctx2d.shadowColor = "#57e08a"; ctx2d.shadowBlur = 16;
+  ctx2d.fillText(G.banner.text, V.w / 2, y);
+  ctx2d.shadowBlur = 0;
+  ctx2d.fillStyle = "#ffd479";
+  ctx2d.font = "800 " + (13 * V.scale).toFixed(0) + "px system-ui,sans-serif";
+  ctx2d.fillText(G.banner.sub || "", V.w / 2, y + 20 * V.scale);
+  ctx2d.restore();
+}
 function drawBossIntro() {
   if (!bossIntro) return;
   bossIntro.t -= G.dt;
@@ -2248,11 +2368,20 @@ function showMenu() {
     (save.endlessBest ? "　无尽最高：<b style='color:#ffd479'>" + save.endlessBest + " 波</b>" : "") +
     "</div></div>" +
     '<div class="row" style="flex-direction:column">' +
+    (pendingResume()
+      ? '<button class="btn" id="mResume" style="border-color:#ffd479aa;background:linear-gradient(180deg,#4a3a1f,#2a2113);color:#ffe9bd">⏸ 继续上次的对局　' +
+        (pendingResume().endless ? "无尽 第 " + pendingResume().endlessWave + " 波" : chapterName(pendingResume().chapter) + " " + pendingResume().chapter + "-" + pendingResume().level) +
+        " · Lv." + pendingResume().players[0].level + " · " + Object.keys(pendingResume().players[0].skills || {}).length + " 种技能</button>"
+      : "") +
     (carrySkillCount() && G.carryNext
       ? '<button class="btn primary" id="mKeep" style="border-color:#57e08aaa;background:linear-gradient(180deg,#4bd88a,#1f9c5b);color:#04170d">🔗 继续上局（继承 ' + carrySkillCount() + " 种技能）→ " + chapterName(G.carryNext.chapter) + " " + G.carryNext.chapter + "-" + G.carryNext.level + "</button>"
       : "") +
     '<button class="btn " id="mContinue">▶ 新的一局　' + chapterName(save.chapter) + " " + save.chapter + "-" + save.level + "</button>" +
     '<button class="btn" id="mCoop" style="border-color:#8fd0ffaa;background:linear-gradient(180deg,#2a4a6e,#16283c);color:#eaf6ff">👥 双人同屏（和朋友一起玩）</button>' +
+    (save.endlessUnlocked
+      ? '<button class="btn" id="mDaily" style="border-color:#57e08aaa;background:linear-gradient(180deg,#1f5c3f,#0f2f21);color:#d8ffe8">📅 今日挑战　' +
+        (dailyBest() ? "今日最佳 " + dailyBest() + " 波" : "每天同一套关卡，和朋友比一比") + "</button>"
+      : "") +
     (save.endlessUnlocked
       ? '<button class="btn" id="mEndless" style="border-color:#c9a2ffaa;background:linear-gradient(180deg,#4a3a7a,#241a3d);color:#f0e6ff">♾ 无尽模式　单人 ' + (save.endlessBest || 0) + " 波 · 双人 " + (save.endlessBest2P || 0) + " 波</button>"
       : '<div class="tip" style="font-size:11px;opacity:.7">♾ 无尽模式：通关第 2 章解锁</div>') +
@@ -2273,8 +2402,10 @@ function showMenu() {
   );
   $("mContinue").onclick = () => startRun(save.chapter, save.level, false);
   if ($("mKeep")) $("mKeep").onclick = () => startRun(G.carryNext.chapter, G.carryNext.level, false, { twoP: G.twoP, keep: true });
+  if ($("mResume")) $("mResume").onclick = () => resumeRun();
   $("mCoop").onclick = () => showCoopSetup();
   if ($("mEndless")) $("mEndless").onclick = () => showEndlessMenu();
+  if ($("mDaily")) $("mDaily").onclick = () => startDaily();
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
@@ -2321,13 +2452,15 @@ function showHelp() {
     "· 🟢<b style='color:#57e08a'>生存</b>：生命、护盾、荆棘、吸血、回复、闪避、幸运<br>" +
     "· 升级时：<b>先在顶部选属性，再选该系的 3 张技能卡之一</b>（同一弹窗内完成）；技能重复选会叠加层数<br>" +
     "· <b>升级节奏较慢</b>（约每 12~20 个击杀升一级，平均每关 1 次），不会一直被打断<br>" +
+    "· 手机切到后台/误刷新也不会丢进度：回来点主菜单「⏸ 继续上次的对局」即可<br>" +
     "· 属性点<b>很稀缺（每 2 次升级 1 点，每系上限 10 点）</b>，<b>集中投资才有强度</b><br>" +
     "· <b>敌人会跟着你的本局成长一起变强</b>：技能属性继承了，就别想一路平推<br>" +
     "· 每系等级只放大<b>该系</b>技能；本体箭矢按<b>最高属性</b>成长（所以任何流派都能打）<br><br>" +
     "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
     "<b style='color:#57e08a'>技能、属性与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
-    "· 通关第 2 章解锁 <b>♾ 无尽模式</b>，主菜单可直接进入，<b>单人 / 双人各自独立</b>（纪录分开记）<br><br>" +
+    "· 通关第 2 章解锁 <b>♾ 无尽模式</b>，主菜单可直接进入，<b>单人 / 双人各自独立</b>（纪录分开记）<br>" +
+    "· <b>📅 今日挑战</b>：每天 0 点换一套固定关卡（同一种子），和朋友比当天谁走得远<br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
     "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
     "· 结束时自动比波数判胜负，还能一键「回敬挑战」把新纪录甩回去<br><br>" +
@@ -2467,6 +2600,22 @@ function showEndlessMenu() {
   $("eBack").onclick = showMenu;
 }
 /* ---------------- 好友挑战 ---------------- */
+/* ---------------- 今日挑战（每天同一颗种子，全服可比较） ---------------- */
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function dailyBest() {
+  if (!save.daily || save.daily.date !== todayStr()) return 0;
+  return save.daily.wave || 0;
+}
+function startDaily() {
+  Sfx.pick();
+  startRun(1, 1, true, {
+    twoP: false,
+    challenge: { seed: "D" + todayStr().replace(/-/g, ""), name: "今日挑战", score: dailyBest(), daily: true }
+  });
+}
 function makeSeed() {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -2801,11 +2950,29 @@ function skillListHtml(p) {
 function playerHpText() {
   return players.map((p) => (G.twoP ? pName(p) + " " : "") + Math.max(0, Math.round(p.hp)) + "/" + p.maxHp).join(" · ");
 }
+function statGridHtml(p) {
+  const st = p.st;
+  const dps = atkOf(p) * aspdOf(p) * Math.min(st.arrows, 12) * (1 + st.crit * (st.critMul - 1));
+  const cell = (k, v, c) => '<div style="flex:1 1 30%;min-width:88px;background:#0e1729;border:1px solid #2a3854;border-radius:10px;padding:6px 8px;text-align:left">' +
+    '<div style="font-size:10px;color:#8ea0c0">' + k + '</div><div style="font-size:13px;font-weight:900;color:' + (c || "#e9f0ff") + '">' + v + '</div></div>';
+  return '<div class="attrrow" style="gap:6px;margin:0 0 10px">' +
+    cell("攻击力", Math.round(atkOf(p))) +
+    cell("攻速", aspdOf(p).toFixed(2) + "/秒") +
+    cell("估算 DPS", Math.round(dps), "#ffd479") +
+    cell("每次箭数", Math.min(st.arrows, 12) + " 支") +
+    cell("暴击率", Math.round(st.crit * 100) + "%") +
+    cell("暴击伤害", Math.round((st.critMul - 1) * 100) + "%") +
+    cell("穿透", st.pierce + " 个") +
+    cell("移速", Math.round(speedOf(p))) +
+    cell("本体倍率", "×" + colorlessMul(p).toFixed(2)) +
+    "</div>";
+}
 function showPause() {
   const skillPanels = players.map((p) =>
     '<div class="panel"><h2>' + (G.twoP ? pName(p) + " · " : "") + "属性与技能（" + Object.keys(p.skills).length + " 种技能）</h2>" +
     '<div class="attrrow" style="margin:0 0 8px">' + attrBadges(p) +
     '<span class="abadge" style="color:#ffd479;border-color:#ffd47955">本体箭矢 ×' + colorlessMul(p).toFixed(2) + "</span></div>" +
+    statGridHtml(p) +
     '<div class="list">' + skillListHtml(p) + "</div></div>").join("");
   showOverlay(
     '<h1 class="title" style="font-size:26px">暂 停</h1>' +
@@ -2862,7 +3029,17 @@ function showDefeat(endless) {
   el.hud.classList.add("hidden");
   const ch = G.challenge;
   let challengeBlock = "";
-  if (ch) {
+  if (ch && ch.daily) {
+    const best = dailyBest();
+    const isNew = G.endlessWave >= best;
+    challengeBlock = '<div class="panel" style="border-color:#57e08a88;text-align:center">' +
+      '<div style="font-size:15px;font-weight:900;color:' + (isNew ? "#ffd479" : "#57e08a") + '">' +
+      (isNew ? "🎉 今日新纪录！" : "📅 今日挑战结果") + "</div>" +
+      '<div style="font-size:12px;color:#c9d7f0;line-height:1.9;margin-top:4px">' +
+      "本次 <b style='color:#ffd479;font-size:16px'>" + G.endlessWave + "</b> 波　·　今日最佳 <b>" + Math.max(best, G.endlessWave) + "</b> 波<br>" +
+      "<span style='color:#93a4c4'>每天 0 点换新关卡，同一套种子公平比较</span></div>" +
+      '<div class="row"><button class="btn primary" id="dShare">📲 分享今日成绩</button></div></div>';
+  } else if (ch) {
     const my = G.endlessWave;
     const win = my > (ch.score | 0);
     const tie = my === (ch.score | 0);
@@ -2882,7 +3059,7 @@ function showDefeat(endless) {
   }
   showOverlay(
     '<h1 class="title" style="font-size:28px;background:linear-gradient(180deg,#ffc9c9,#ff4d63 60%,#8a1024);-webkit-background-clip:text;background-clip:text;color:transparent">你 倒 下 了</h1>' +
-    '<div class="subtitle">' + (endless ? (ch ? "好友挑战 · " : "无尽模式 · ") + "第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) +
+    '<div class="subtitle">' + (endless ? (ch ? (ch.daily ? "今日挑战 · " : "好友挑战 · ") : "无尽模式 · ") + "第 " + G.endlessWave + " 波" : chapterName(G.chapter) + " " + G.chapter + "-" + G.level) +
     (G.twoP ? " · 双人同屏" : "") + "</div>" +
     challengeBlock +
     '<div class="panel" style="text-align:center"><div style="font-size:13px;line-height:2.1;color:#c9d7f0">' +
@@ -2898,7 +3075,13 @@ function showDefeat(endless) {
     "</div></div>" +
     '<div class="tip">💡 提示：先去商店把金币花掉，攻击/生命/复活都会永久提升</div>'
   );
-  if (ch) {
+  if (ch && ch.daily) {
+    const url = challengeUrl(ch.seed, save.playerName || "", G.endlessWave);
+    $("dShare").onclick = () => {
+      if (navigator.share) navigator.share({ title: "音帝庙大冒险 · 今日挑战", text: todayStr() + " 的挑战我打到第 " + G.endlessWave + " 波，来比比！", url: url }).catch(() => { });
+      else copyText(url, $("dShare"));
+    };
+  } else if (ch) {
     const url = challengeUrl(ch.seed, save.playerName || "", G.endlessWave);
     $("dCopy").onclick = () => copyText(url, $("dCopy"));
     $("dShare").onclick = () => {
