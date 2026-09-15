@@ -213,7 +213,7 @@ h1.title{font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:4px;line-
 /* =========================================================================
    弓箭传说 · 复刻版（单文件 H5）
    ========================================================================= */
-const BUILD = "v1.4 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
+const BUILD = "v1.5 · 2026-09-15";     // 构建版本：用于确认手机是否加载到最新版
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -256,6 +256,8 @@ function defaultSave() {
     chapter: 1, level: 1,
     sound: true, best: 0, endlessBest: 0, endlessBest2P: 0, endlessUnlocked: false,
     runSnapshot: null, tutorialDone: false, daily: null,
+    ach: {}, stats: { kills: 0, runs: 0, clears: 0, coins: 0, bestWave: 0, bestDaily: 0, bossKills: 0, noHitRooms: 0 },
+    board: [],
     playerName: "", challenges: []
   };
 }
@@ -284,7 +286,128 @@ function persist(force) {
   saveTimer = setTimeout(writeSave, 400);
 }
 window.addEventListener("pagehide", () => { snapshotRun(); writeSave(); });
-window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { snapshotRun(); writeSave(); } });
+window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { snapshotRun(); writeSave(); } Music._apply(); });
+
+/* ======================= 好友排行榜（本机存档，含自己与好友成绩） ======================= */
+function boardUpsert(entry) {
+  if (!entry || !entry.name) return;
+  save.board = save.board || [];
+  const key = (e) => e.name + "|" + (e.kind || "endless");
+  const old = save.board.find((e) => key(e) === key(entry));
+  if (!old) save.board.push(entry);
+  else if ((entry.wave | 0) > (old.wave | 0)) Object.assign(old, entry);
+  else return;
+  save.board = save.board.sort((a, b) => (b.wave | 0) - (a.wave | 0)).slice(0, 30);
+  persist(true);
+}
+function myBoardName() { return (save.playerName || "").trim() || "我"; }
+function recordMyRun() {
+  const kind = G.challenge && G.challenge.daily ? "daily" : "endless";
+  boardUpsert({ name: myBoardName(), wave: G.endlessWave, kind: kind, me: true, ts: Date.now() });
+}
+function recordFriendScore(ch) {
+  if (!ch || !ch.name || ch.daily) return;
+  boardUpsert({ name: ch.name.slice(0, 12), wave: ch.score | 0, kind: "endless", me: false, ts: Date.now() });
+}
+function showBoard() {
+  G.state = "menu";
+  el.hud.classList.add("hidden");
+  const list = (save.board || []).slice().sort((a, b) => (b.wave | 0) - (a.wave | 0));
+  const rows = list.length
+    ? list.map((e, i) => {
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : String(i + 1).padStart(2, " ");
+      const kind = e.kind === "daily" ? "📅" : "♾";
+      return '<div class="item" style="' + (e.me ? "border-color:#ffd47977" : "") + '">' +
+        '<div class="ic" style="font-size:16px">' + medal + "</div>" +
+        "<div class='tx'><div class='nm'>" + esc(e.name) + (e.me ? ' <span style="color:#ffd479;font-size:10px">（你）</span>' : "") + "</div>" +
+        "<div class='ds'>" + kind + " " + (e.kind === "daily" ? "今日挑战" : "无尽模式") + "</div></div>" +
+        '<div class="pill">第 ' + (e.wave | 0) + " 波</div></div>";
+    }).join("")
+    : '<div class="tip" style="padding:10px">还没有成绩。去打一局无尽模式，或接受好友的挑战链接</div>';
+  showOverlay(
+    '<h1 class="title" style="font-size:24px">排行榜</h1>' +
+    '<div class="subtitle">你和好友的最高波数（保存在这台设备上）</div>' +
+    '<div class="panel"><h2>无尽 · 今日挑战</h2><div class="list">' + rows + "</div></div>" +
+    '<div class="row"><button class="btn ghost small" id="bChallenge">⚔ 去发起挑战</button>' +
+    '<button class="btn ghost small" id="bClear">🗑 清空榜</button></div>' +
+    '<button class="btn ghost" id="bBack">返回</button>' +
+    '<div class="tip">接受好友的挑战链接后，他的成绩会自动记录到这里</div>'
+  );
+  $("bChallenge").onclick = showChallenge;
+  $("bClear").onclick = () => { if (confirm("清空排行榜？")) { save.board = []; persist(true); showBoard(); } };
+  $("bBack").onclick = showMenu;
+}
+
+/* ======================= 成就 ======================= */
+const ACHIEVEMENTS = [
+  { id: "firstClear", icon: "🏅", name: "首战告捷", desc: "通关任意一个关卡", check: (s) => s.clears >= 1 },
+  { id: "kill100", icon: "💀", name: "百步穿杨", desc: "单局击杀 100 个敌人", check: (s) => s.runKills >= 100 },
+  { id: "boss1", icon: "👑", name: "屠龙者", desc: "击败一个 BOSS", check: (s) => s.bossKills >= 1 },
+  { id: "boss10", icon: "🔥", name: "BOSS 克星", desc: "累计击败 10 个 BOSS", check: (s) => s.bossKills >= 10 },
+  { id: "ch1", icon: "🌲", name: "森林毕业", desc: "通关第 1 章第 10 关", check: (s) => s.clearedCh1 },
+  { id: "ch3", icon: "🩸", name: "深渊征服者", desc: "通关第 3 章第 10 关", check: (s) => s.clearedCh3 },
+  { id: "wave10", icon: "♾", name: "无尽旅人", desc: "无尽模式打到第 10 波", check: (s) => s.bestWave >= 10 },
+  { id: "wave25", icon: "🌌", name: "无尽强者", desc: "无尽模式打到第 25 波", check: (s) => s.bestWave >= 25 },
+  { id: "noHit", icon: "🛡", name: "不动如山", desc: "零受伤清空一个房间", check: (s) => s.noHitRooms >= 1 },
+  { id: "noHitRoom10", icon: "🧘", name: "心如止水", desc: "累计零受伤清空 20 个房间", check: (s) => s.noHitRooms >= 20 },
+  { id: "stack20", icon: "📚", name: "技能大师", desc: "单局技能总层数达到 20", check: (s) => s.runStacks >= 20 },
+  { id: "attrcap", icon: "🎨", name: "专精一派", desc: "把任意一系属性点满", check: (s) => s.attrMaxed },
+  { id: "rich", icon: "💰", name: "富甲一方", desc: "累计获得 10000 金币", check: (s) => s.coins >= 10000 },
+  { id: "dps", icon: "⚡", name: "人形炮台", desc: "单局估算 DPS 超过 1200", check: (s) => s.dps >= 1200 },
+  { id: "revive", icon: "🕊", name: "浴火重生", desc: "触发一次复活", check: (s) => s.revived },
+  { id: "coop", icon: "👥", name: "双人同心", desc: "双人同屏通关一个关卡", check: (s) => s.coopClear },
+  { id: "beatFriend", icon: "⚔️", name: "好友之敌", desc: "在好友挑战中获胜", check: (s) => s.beatFriend },
+  { id: "daily", icon: "📅", name: "每日打卡", desc: "完成一次今日挑战", check: (s) => s.dailyDone }
+];
+const ACH_MAP = {}; ACHIEVEMENTS.forEach((a) => (ACH_MAP[a.id] = a));
+function evalAchievement(id, ctx) {
+  if (save.ach[id]) return;
+  const a = ACH_MAP[id];
+  if (!a) return;
+  let ok = false;
+  try { ok = !!a.check(ctx || liveStat()); } catch (e) { ok = false; }
+  if (!ok) return;
+  save.ach[id] = Date.now();
+  persist(true);
+  if (typeof G !== "undefined" && G.state !== "menu") {
+    toast("🏆 成就达成：" + a.name + "　" + a.icon, 2200);
+    Sfx.levelup(); haptic(30);
+  }
+}
+function evalAllAchievements() { for (const a of ACHIEVEMENTS) evalAchievement(a.id, liveStat()); }
+function liveStat() {
+  const p = players[0];
+  const stacks = p ? Object.keys(p.skills).reduce((s, k) => s + p.skills[k], 0) : 0;
+  const dps = p ? atkOf(p) * aspdOf(p) * Math.min(p.st.arrows, 12) * (1 + p.st.crit * (p.st.critMul - 1)) : 0;
+  return Object.assign({}, save.stats, {
+    runKills: RUN.kills || 0, runStacks: stacks, dps: dps,
+    attrMaxed: p ? ATTR_ORDER.some((k) => attrLv(p, k) >= ATTR_MAX) : false,
+    revived: !!RUN.revived,
+    coopClear: !!G.coopClear,
+    clearedCh1: !!save.progress["1-10"], clearedCh3: !!save.progress["3-10"],
+    beatFriend: !!G.beatFriend, dailyDone: !!(save.daily && save.daily.wave > 0 && save.daily.date === todayStr())
+  });
+}
+function achievementCount() { return Object.keys(save.ach || {}).length; }
+function showAchievements() {
+  G.state = "menu";
+  el.hud.classList.add("hidden");
+  const got = achievementCount();
+  const list = ACHIEVEMENTS.map((a) => {
+    const un = !!save.ach[a.id];
+    return '<div class="item" style="' + (un ? "border-color:#ffd47955" : "opacity:.55") + '">' +
+      '<div class="ic">' + (un ? a.icon : "🔒") + "</div>" +
+      "<div class='tx'><div class='nm'>" + a.name + (un ? ' <span style="color:#57e08a;font-size:10px">已达成</span>' : "") + "</div>" +
+      "<div class='ds'>" + a.desc + "</div></div></div>";
+  }).join("");
+  showOverlay(
+    '<h1 class="title" style="font-size:24px">成就</h1>' +
+    '<div class="subtitle">' + got + " / " + ACHIEVEMENTS.length + " 已达成</div>" +
+    '<div class="panel"><div class="list">' + list + "</div></div>" +
+    '<button class="btn ghost" id="aBack">返回</button>'
+  );
+  $("aBack").onclick = showMenu;
+}
 
 /* ======================= 新手引导 ======================= */
 function showTutorial() {
@@ -407,6 +530,96 @@ const Sfx = {
   pick() { this.tone(760, 0.08, "triangle", 0.16, 1200); }
 };
 
+/* ======================= 背景音乐（WebAudio 合成，无外部音频文件） ======================= */
+const MUSIC = {
+  menu: { bpm: 92, root: 57, bass: [0, -1, -1, -1, -5, -1, -1, -1, -3, -1, -1, -1, -7, -1, -1, -1], arp: [12, 16, 19, 16, 12, 19, 16, 12, 10, 14, 17, 14, 10, 17, 14, 10], drums: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0] },
+  battle: { bpm: 132, root: 57, bass: [0, 0, -1, 0, -5, -1, -5, -1, -3, -3, -1, -3, -7, -1, -7, -1], arp: [12, 15, 19, 15, 12, 15, 19, 22, 15, 19, 22, 19, 17, 20, 24, 20], drums: [2, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 1] },
+  boss: { bpm: 150, root: 52, bass: [0, 0, 0, -1, 0, 0, -2, 0, -1, -1, -1, -1, -3, -3, -5, -5], arp: [12, 13, 18, 19, 12, 13, 18, 22, 11, 12, 17, 18, 10, 11, 16, 17], drums: [2, 1, 2, 1, 2, 1, 2, 1, 3, 1, 2, 1, 2, 1, 2, 3] }
+};
+function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+const Music = {
+  track: null, step: 0, nextT: 0, timer: null, gain: null, started: false,
+  _ensure() {
+    Sfx.init();
+    if (!Sfx.ctx) return false;
+    if (!this.gain) {
+      this.gain = Sfx.ctx.createGain();
+      this.gain.gain.value = 0;
+      this.gain.connect(Sfx.master);
+    }
+    return true;
+  },
+  set(track) {
+    if (this.track === track) { this._apply(); return; }
+    this.track = track;
+    this.step = 0;
+    this._apply();
+  },
+  _apply() {
+    const want = !!this.track && save.sound && G.state !== "paused" && !document.hidden;
+    if (!this._ensure()) return;
+    if (Sfx.ctx.state !== "running") { this.nextT = 0; }
+    const now = Sfx.ctx.currentTime;
+    try { this.gain.gain.cancelScheduledValues(now); this.gain.gain.setTargetAtTime(want ? 0.085 : 0, now, 0.2); } catch (e) { }
+    if (want && !this.timer) { this.nextT = Math.max(this.nextT, now + 0.08); this.timer = setInterval(() => this._tick(), 55); }
+    if (!want && this.timer) { clearInterval(this.timer); this.timer = null; }
+  },
+  _note(time, midi, dur, type, vol) {
+    if (!Sfx.ctx) return;
+    const o = Sfx.ctx.createOscillator(), g = Sfx.ctx.createGain();
+    o.type = type; o.frequency.value = midiHz(midi);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(vol, time + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    o.connect(g); g.connect(this.gain);
+    o.start(time); o.stop(time + dur + 0.03);
+  },
+  _drum(time, kind) {
+    if (!Sfx.ctx || !kind) return;
+    if (kind === 2) {   // 底鼓
+      const o = Sfx.ctx.createOscillator(), g = Sfx.ctx.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(140, time);
+      o.frequency.exponentialRampToValueAtTime(48, time + 0.12);
+      g.gain.setValueAtTime(0.5, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
+      o.connect(g); g.connect(this.gain); o.start(time); o.stop(time + 0.18);
+    } else {            // 军鼓 / 踩镲
+      const dur = kind === 3 ? 0.16 : 0.05;
+      const n = Math.floor(Sfx.ctx.sampleRate * dur);
+      const buf = Sfx.ctx.createBuffer(1, n, Sfx.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const s = Sfx.ctx.createBufferSource(); s.buffer = buf;
+      const f = Sfx.ctx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = kind === 3 ? 900 : 6000;
+      const g = Sfx.ctx.createGain(); g.gain.value = kind === 3 ? 0.22 : 0.12;
+      s.connect(f); f.connect(g); g.connect(this.gain); s.start(time);
+    }
+  },
+  _tick() {
+    if (!Sfx.ctx || Sfx.ctx.state !== "running") { this.nextT = 0; return; }
+    const P = MUSIC[this.track] || MUSIC.menu;
+    const stepDur = 60 / P.bpm / 4;
+    const now = Sfx.ctx.currentTime;
+    if (!this.nextT || this.nextT < now - 0.5) this.nextT = now + 0.05;
+    while (this.nextT < now + 0.25) {
+      const s = this.step % 16;
+      const bass = P.bass[s], arp = P.arp[s], dr = P.drums[s];
+      if (bass >= 0) this._note(this.nextT, P.root + bass - 12, stepDur * 1.8, "triangle", 0.34);
+      if (arp >= 0) this._note(this.nextT, P.root + arp, stepDur * 0.95, "square", 0.10);
+      if (dr) this._drum(this.nextT, dr);
+      this.nextT += stepDur;
+      this.step++;
+    }
+  }
+};
+/* 根据当前状态自动切换曲目：菜单 / 战斗 / BOSS */
+function desiredTrack() {
+  if (G.state === "playing" || G.state === "levelup" || G.state === "tutorial") {
+    for (const e of enemies) if (e.boss && !e.dead) return "boss";
+    return "battle";
+  }
+  return "menu";
+}
+
 /* ======================= DOM ======================= */
 const $ = (id) => document.getElementById(id);
 const cv = $("cv"), ctx2d = cv.getContext("2d", { alpha: false });
@@ -462,6 +675,18 @@ function attrDmgMul(p, key) { return 1 + ATTRS[key].dmgK * attrLv(p, key); }
 function attrUtilMul(p, key) { return 1 + ATTRS[key].utilK * attrLv(p, key); }
 /* 本体箭矢视为「无色武器」，按最高属性成长（保证任何流派都能打） */
 function colorlessMul(p) { return 1 + 0.05 * attrMax(p); }
+/* 武器倍率：染色武器只吃自己那一系，无色武器吃最高属性 —— 选武器 = 选流派 */
+function weaponMul(p) {
+  const w = WEAPONS[G.weapon] || WEAPONS.bow;
+  if (!w.attr) return colorlessMul(p);
+  return 1 + 0.10 * attrLv(p, w.attr);
+}
+function weaponAttrName(p) {
+  const w = WEAPONS[G.weapon] || WEAPONS.bow;
+  if (!w.attr) return "无色（按最高属性）";
+  const a = ATTRS[w.attr];
+  return a.icon + a.name + " Lv." + attrLv(p, w.attr);
+}
 function attrSummary(p) {
   return ATTR_ORDER.map((k) => ATTRS[k].icon + attrLv(p, k)).join(" ");
 }
@@ -557,7 +782,7 @@ const Input = {
 function isUI(t) { return t && t.closest && t.closest("#overlay, .iconbtn, .btn, #btnDash, #btnDash2, .pill, .lvcell, .card, .tab, .item"); }
 Input.init();
 cv.addEventListener("pointerdown", (e) => {
-  Sfx.resume();
+  Sfx.resume(); Music._apply();
   if (G.state !== "playing") return;
   Input.init && (Input.sticks.length || Input.init());
   // 双人：按触点在左半屏/右半屏分派；单人：任意触点都用 P1
@@ -594,11 +819,11 @@ function onResizeGame() {
 }
 /* ======================= 武器 ======================= */
 const WEAPONS = {
-  bow: { id: "bow", name: "猎手长弓", icon: "🏹", cost: 0, dmg: 14, aspd: 1.75, speed: 238, desc: "均衡可靠，新手首选" },
-  crossbow: { id: "crossbow", name: "疾风连弩", icon: "🎯", cost: 700, dmg: 7.8, aspd: 3.1, speed: 246, spread: 0.07, desc: "攻速极高，单发伤害低" },
-  heavy: { id: "heavy", name: "裂石重弩", icon: "🗡️", cost: 1600, dmg: 28, aspd: 0.95, speed: 214, pierce: 1, big: 0.55, desc: "高伤自带穿透，射速慢" },
-  staff: { id: "staff", name: "秘法法杖", icon: "🔮", cost: 2600, dmg: 12, aspd: 1.7, speed: 232, homing: 1, desc: "箭矢自动追踪敌人" },
-  trident: { id: "trident", name: "三叉圣弓", icon: "🔱", cost: 4200, dmg: 11.5, aspd: 1.6, speed: 230, side: 1, desc: "永久附带左右侧射" }
+  bow: { id: "bow", name: "猎手长弓", icon: "🏹", cost: 0, dmg: 14, aspd: 1.75, speed: 238, attr: null, desc: "无色武器：按你的最高属性成长，任何流派都能用" },
+  crossbow: { id: "crossbow", name: "疾风连弩", icon: "🎯", cost: 700, dmg: 7.8, aspd: 3.1, speed: 246, spread: 0.07, attr: "red", desc: "攻速极高 · 伤害随🔴狂怒成长" },
+  heavy: { id: "heavy", name: "裂石重弩", icon: "🗡️", cost: 1600, dmg: 28, aspd: 0.95, speed: 214, pierce: 1, big: 0.55, attr: "green", desc: "高伤穿透 · 伤害随🟢生存成长（肉搏流）" },
+  staff: { id: "staff", name: "秘法法杖", icon: "🔮", cost: 2600, dmg: 12, aspd: 1.7, speed: 232, homing: 1, attr: "purple", desc: "自动追踪 · 伤害随🟣秘法成长" },
+  trident: { id: "trident", name: "三叉圣弓", icon: "🔱", cost: 4200, dmg: 11.5, aspd: 1.6, speed: 230, side: 1, attr: "purple", desc: "三向散射 · 伤害随🟣秘法成长" }
 };
 /* ======================= 永久强化 ======================= */
 const PERMS = [
@@ -824,7 +1049,7 @@ function refreshStats(p, healGain) {
 function refreshAllStats(healGain) { for (const p of players) refreshStats(p, healGain); }
 function atkOf(p) {
   const st = p.st;
-  let a = st.baseDmg * st.atkMul * (st.fMax || 1);   // 本体箭矢：无色武器，按最高属性成长
+  let a = st.baseDmg * st.atkMul * weaponMul(p);   // 武器倍率：染色武器只吃自己那一系
   a *= 1 + Math.max(0, (p.level || 1) - 1) * DIFF.levelAtk;   // 本局等级越高攻击越强（幅度已下调）
   if (st.rage > 0) { const miss = 1 - p.hp / p.maxHp; a *= 1 + st.rage * miss; }
   return a;
@@ -974,6 +1199,9 @@ function killEnemy(e, opts) {
   const p = opts.owner || e.lastHitBy || players[0];
   const st = p.st;
   RUN.kills = (RUN.kills || 0) + 1;
+  save.stats.kills = (save.stats.kills || 0) + 1;
+  if (e.boss) { save.stats.bossKills = (save.stats.bossKills || 0) + 1; evalAchievement("boss1"); evalAchievement("boss10"); }
+  evalAchievement("kill100");
   G.noKillT = 0; G.rageLv = 0;
   spawnParticles(e.x, e.y, e.color, e.boss ? 34 : e.elite ? 18 : 10, e.boss ? 380 : 240, 0.55, e.boss ? 7 : 4.5, true);
   ring(e.x, e.y, e.boss ? 150 : e.r * 2.4, e.color, e.boss ? 0.55 : 0.28);
@@ -1026,6 +1254,7 @@ function hurtPlayer(p, dmg, src) {
   }
   if (d > 0) { p.hp -= d; addFloat(p.x, p.y - 26 * V.scale, "-" + Math.round(d), "#ff7a8a", 15); }
   p.hitFlash = 0.25; p.invuln = DIFF.hitInvuln;
+  G._roomDamaged = true;
   G.shake = Math.max(G.shake, 7); Sfx.hurt(); haptic(28);
   spawnParticles(p.x, p.y, "#ff5c72", 8, 160, 0.4, 4);
   if (st.thorns > 0 && src && src.hp !== undefined && src.r) hurtEnemy(src, st.thorns * dmg, { noCrit: true, owner: p });
@@ -1041,8 +1270,8 @@ function playerDie(p) {
     spawnParticles(p.x, p.y, "#ffd479", 26, 320, 0.8, 6, true);
     toast(label); Sfx.levelup(); haptic(40);
   };
-  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之心 · 复活！"); return; }
-  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); return; }
+  if (st.revive > 0) { st.revive--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之心 · 复活！"); evalAchievement("revive"); return; }
+  if (G.revivesLeft > 0) { G.revivesLeft--; RUN.revived = true; revive("🕊️ " + pName(p) + " 凤凰之羽 · 复活！（剩余 " + G.revivesLeft + "）"); evalAchievement("revive"); return; }
   p.alive = false;
   p.hp = 0;
   Sfx.die(); haptic([40, 60, 40]);
@@ -1069,6 +1298,7 @@ function gainExp(p, v) {
     p.attrTicks = (p.attrTicks || 0) + 1;
   }
   queueLevelUps();
+  evalAchievement("stack20");
 }
 function queueLevelUps() {
   if (G.state !== "playing" && G.state !== "levelup") return;
@@ -1616,6 +1846,8 @@ function startRun(chapter, level, endless, opts) {
     RUN.kills = 0; RUN.revived = false;
     G.runCoins = 0; G.runKills = 0; G.runTime = 0;
     G.revivesLeft = save.perm.revive;
+    G.coopClear = false; G.beatFriend = false;
+    save.stats.runs = (save.stats.runs || 0) + 1;
   }
   G.pendingLevelUps = 0; G.lvQueue = [];
   players = [];
@@ -1684,6 +1916,7 @@ function loadRoom() {
   enemies.length = 0; ebullets.length = 0; arrows.length = 0; pickups.length = 0;
   G.waveIdx = 0; G.waveDelay = 0; G.roomClear = false; G.roomClearTimer = 0;
   G.roomTimer = 0; G.noKillT = 0; G.rageLv = 0; G.attritionT = 0; G.attritionWarned = false;
+  G._roomDamaged = false;
   const r = G.rooms[G.room];
   const b = BOUND();
   players.forEach((p, i) => {
@@ -1781,6 +2014,8 @@ function checkRoomFlow(dt) {
     }
     Sfx.clear();
     G.banner = { text: "房 间 清 空", sub: "+" + reward + " 🪙", t: 1.3 };
+    if (!G._roomDamaged) { save.stats.noHitRooms = (save.stats.noHitRooms || 0) + 1; evalAchievement("noHit"); evalAchievement("noHitRoom10"); }
+    G._roomDamaged = false;
     toast("房间清空！ +" + reward + " 🪙", 1200);
     if (Math.random() < 0.35) {
       const p = players[0];
@@ -1819,6 +2054,10 @@ function levelCleared() {
   let bonus = Math.round(60 + tierOf(G.chapter, G.level, 0) * 8);
   if (first) bonus = Math.round(bonus * 1.5);
   save.coins += bonus; G.runCoins += bonus;
+  save.stats.clears = (save.stats.clears || 0) + 1;
+  save.stats.coins = (save.stats.coins || 0) + bonus;
+  if (G.twoP) G.coopClear = true;
+  evalAchievement("firstClear"); evalAchievement("ch1"); evalAchievement("ch3"); evalAchievement("coop"); evalAchievement("rich");
   if (G.chapter >= (save.unlocked._max || 1)) save.unlocked._max = G.chapter;
   const nxt = G.level + 1;
   if (nxt > CHAPTER_MAX_LEVEL) {
@@ -1839,8 +2078,14 @@ function endlessGameOver() {  G.state = "dead";
   if (ch && ch.daily) {
     if (!save.daily || save.daily.date !== todayStr()) save.daily = { date: todayStr(), wave: 0 };
     save.daily.wave = Math.max(save.daily.wave || 0, G.endlessWave);
+    save.stats.bestDaily = Math.max(save.stats.bestDaily || 0, G.endlessWave);
+    evalAchievement("daily"); evalAchievement("wave10"); evalAchievement("wave25");
   } else if (G.twoP) save.endlessBest2P = Math.max(save.endlessBest2P || 0, G.endlessWave);
   else save.endlessBest = Math.max(save.endlessBest || 0, G.endlessWave);
+  save.stats.bestWave = Math.max(save.stats.bestWave || 0, G.endlessWave);
+  recordMyRun();
+  save.stats.coins = (save.stats.coins || 0) + (G.runCoins || 0);
+  evalAchievement("wave10"); evalAchievement("wave25"); evalAchievement("rich"); evalAllAchievements();
   persist(true);
   showDefeat(true);
 }
@@ -1924,6 +2169,7 @@ function frame(now) {
     updateParts(rawDt * 0.4);
     if (G.shake > 0) G.shake = Math.max(0, G.shake - rawDt * 30);
   }
+  Music.set(desiredTrack());
   render();
   requestAnimationFrame(frame);
 }
@@ -1933,6 +2179,7 @@ function pauseGame() {
   if (G.state !== "playing") return;
   snapshotRun();
   G.state = "paused";
+  Music._apply();
   Input.endAll();
   showPause();
 }
@@ -1941,6 +2188,7 @@ function resumeGame() {
   G.state = "playing";
   lastT = performance.now();
   hideOverlay();
+  Music._apply();
 }
 el.btnPause.addEventListener("click", pauseGame);
 el.btnDash.addEventListener("pointerdown", (e) => { e.preventDefault(); doDash(0); });
@@ -2388,6 +2636,8 @@ function showMenu() {
     '<div class="row">' +
     '<button class="btn ghost" id="mLevels">🗺 关卡选择</button>' +
     '<button class="btn ghost" id="mChallenge">⚔ 好友挑战</button>' +
+    '<button class="btn ghost" id="mBoard">🏆 排行榜</button>' +
+    '<button class="btn ghost" id="mAch">🏆 成就 ' + achievementCount() + "/" + ACHIEVEMENTS.length + "</button>" +
     '<button class="btn ghost" id="mShop">⚒ 强化 &amp; 武器</button>' +
     "</div>" +
     '<div class="row">' +
@@ -2406,12 +2656,14 @@ function showMenu() {
   $("mCoop").onclick = () => showCoopSetup();
   if ($("mEndless")) $("mEndless").onclick = () => showEndlessMenu();
   if ($("mDaily")) $("mDaily").onclick = () => startDaily();
+  if ($("mAch")) $("mAch").onclick = () => showAchievements();
+  if ($("mBoard")) $("mBoard").onclick = () => showBoard();
   $("mLevels").onclick = () => showLevelSelect(false);
   $("mChallenge").onclick = showChallenge;
   $("mShop").onclick = showShop;
   $("mHelp").onclick = showHelp;
   if ($("mAccept")) $("mAccept").onclick = () => startRun(1, 1, true, { twoP: false, challenge: ch });
-  $("mSound").onclick = () => { save.sound = !save.sound; persist(true); showMenu(); Sfx.resume(); };
+  $("mSound").onclick = () => { save.sound = !save.sound; persist(true); showMenu(); Sfx.resume(); Music._apply(); };
   $("mFull").onclick = () => requestFull();
   $("mUpdate").onclick = () => {
     toast("正在重新加载最新版本…", 1200);
@@ -2455,12 +2707,14 @@ function showHelp() {
     "· 手机切到后台/误刷新也不会丢进度：回来点主菜单「⏸ 继续上次的对局」即可<br>" +
     "· 属性点<b>很稀缺（每 2 次升级 1 点，每系上限 10 点）</b>，<b>集中投资才有强度</b><br>" +
     "· <b>敌人会跟着你的本局成长一起变强</b>：技能属性继承了，就别想一路平推<br>" +
-    "· 每系等级只放大<b>该系</b>技能；本体箭矢按<b>最高属性</b>成长（所以任何流派都能打）<br><br>" +
+    "· 每系等级放大<b>该系技能</b>；<b>武器只吃自己那一系</b>（无色长弓按最高属性）——所以「选武器」就是「选流派」<br><br>" +
     "<b style='color:#ffd479'>闯关 · 技能继承</b><br>· 每个小关 3~4 个房间；第 5、10 关是 <b>BOSS 房</b><br>" +
     "<b style='color:#57e08a'>技能、属性与生命会一直继承到下一关</b>（含跨章节），只有 <b>阵亡 / 返回主菜单重开</b> 才会清零<br>" +
     "· 死亡结束本局，金币保留，可在「强化 &amp; 武器」里永久变强<br>" +
     "· 通关第 2 章解锁 <b>♾ 无尽模式</b>，主菜单可直接进入，<b>单人 / 双人各自独立</b>（纪录分开记）<br>" +
-    "· <b>📅 今日挑战</b>：每天 0 点换一套固定关卡（同一种子），和朋友比当天谁走得远<br><br>" +
+    "· <b>📅 今日挑战</b>：每天 0 点换一套固定关卡（同一种子），和朋友比当天谁走得远<br>" +
+    "· <b>🏆 成就</b>：共 18 个成就，达成会在战斗里弹横幅；<b>🏆 排行榜</b>自动记录你和好友的成绩<br>" +
+    "· 背景音乐会随场景切换（菜单 / 战斗 / BOSS），可在主菜单关掉音效<br><br>" +
     "<b style='color:#ffd479'>好友挑战</b><br>· 「⚔ 好友挑战」→ 复制链接发给朋友<br>" +
     "· 朋友打开后会打<b>同一套随机种子</b>的无尽模式：敌人种类、数量、出场位置完全一致<br>" +
     "· 结束时自动比波数判胜负，还能一键「回敬挑战」把新纪录甩回去<br><br>" +
@@ -2529,8 +2783,10 @@ function showLevelSelect(twoP) {
   }
   const wl = Object.keys(WEAPONS).map((id) => {
     const w = WEAPONS[id], owned = !!save.weapons[id];
-    return '<div class="item" style="cursor:pointer" data-w="' + id + '">' +
-      '<div class="ic">' + w.icon + "</div><div class='tx'><div class='nm'>" + w.name + (save.weapon === id ? " ✅" : "") + "</div>" +
+    const wa = w.attr ? ATTRS[w.attr] : null;
+    return '<div class="item" style="cursor:pointer;' + (wa ? "border-color:" + wa.color + "55" : "") + '" data-w="' + id + '">' +
+      '<div class="ic">' + w.icon + "</div><div class='tx'><div class='nm'>" + w.name + (save.weapon === id ? " ✅" : "") +
+      (wa ? ' <span style="color:' + wa.color + ';font-size:11px">' + wa.icon + wa.name + "</span>" : ' <span style="color:#8ea0c0;font-size:11px">⚪ 无色</span>') + "</div>" +
       "<div class='ds'>" + w.desc + "</div></div>" +
       '<div class="pill' + (owned ? "" : " off") + '">' + (owned ? (save.weapon === id ? "使用中" : "装备") : "🪙" + w.cost) + "</div></div>";
   }).join("");
@@ -2681,7 +2937,7 @@ function showChallenge() {
     'style="width:100%;margin:6px 0;padding:10px;border-radius:11px;border:1.5px solid #3a4f78;background:#0e1729;color:#e9f0ff;font-size:13px">' +
     '<button class="btn primary" id="cGo" style="width:100%">⚔ 开始挑战</button></div>' +
     (list ? '<div class="panel"><h2>③ 挑战记录</h2><div class="list">' + list + "</div></div>" : "") +
-    '<div class="row"><button class="btn ghost" id="cBack">返回</button></div>' +
+    '<div class="row"><button class="btn ghost" id="cBoard">🏆 排行榜</button><button class="btn ghost" id="cBack">返回</button></div>' +
     '<div class="tip">两人使用同一颗随机种子，敌人种类、数量与出场位置完全一致，公平比波数</div>'
   );
   const nameInput = $("cName");
@@ -2704,11 +2960,13 @@ function showChallenge() {
     const raw = $("cPaste").value.trim();
     const c = parseChallenge(raw);
     if (!c) { toast("链接无效，请检查是否完整粘贴"); return; }
+    recordFriendScore(c);
     startRun(1, 1, true, { twoP: false, challenge: c });
   };
   overlay.querySelectorAll("[data-re]").forEach((n) => n.onclick = () => {
     startRun(1, 1, true, { twoP: false, challenge: { seed: n.dataset.re, name: "", score: 0 } });
   });
+  $("cBoard").onclick = showBoard;
   $("cBack").onclick = showMenu;
 }
 function parseChallenge(raw) {
@@ -2964,14 +3222,14 @@ function statGridHtml(p) {
     cell("暴击伤害", Math.round((st.critMul - 1) * 100) + "%") +
     cell("穿透", st.pierce + " 个") +
     cell("移速", Math.round(speedOf(p))) +
-    cell("本体倍率", "×" + colorlessMul(p).toFixed(2)) +
+    cell("武器倍率", "×" + weaponMul(p).toFixed(2), ATTRS[(WEAPONS[G.weapon] || WEAPONS.bow).attr] ? ATTRS[(WEAPONS[G.weapon] || WEAPONS.bow).attr].color : "#e9f0ff") +
     "</div>";
 }
 function showPause() {
   const skillPanels = players.map((p) =>
     '<div class="panel"><h2>' + (G.twoP ? pName(p) + " · " : "") + "属性与技能（" + Object.keys(p.skills).length + " 种技能）</h2>" +
     '<div class="attrrow" style="margin:0 0 8px">' + attrBadges(p) +
-    '<span class="abadge" style="color:#ffd479;border-color:#ffd47955">本体箭矢 ×' + colorlessMul(p).toFixed(2) + "</span></div>" +
+    '<span class="abadge" style="color:#ffd479;border-color:#ffd47955">' + (WEAPONS[G.weapon] || WEAPONS.bow).name + " ×" + weaponMul(p).toFixed(2) + "（" + weaponAttrName(p) + "）</span></div>" +
     statGridHtml(p) +
     '<div class="list">' + skillListHtml(p) + "</div></div>").join("");
   showOverlay(
@@ -3044,6 +3302,8 @@ function showDefeat(endless) {
     const win = my > (ch.score | 0);
     const tie = my === (ch.score | 0);
     recordChallenge({ seed: ch.seed, name: ch.name, score: ch.score, myScore: my });
+    recordFriendScore(ch);
+    if (my > (ch.score | 0)) { G.beatFriend = true; evalAchievement("beatFriend"); }
     const seed = ch.seed;
     const url = challengeUrl(seed, save.playerName || "", my);
     challengeBlock =
